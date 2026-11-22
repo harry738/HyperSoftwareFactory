@@ -69,6 +69,7 @@ SIGNALS ─▶ INTAKE ─▶ TRIAGE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─�
 | [Reference architecture](reference/software-factory-reference-architecture.md) | Stages, gates, verification, security, observability |
 | [Build plan](reference/build-plan.md) | What exists, what is next, exit criteria per step |
 | [Assurance hardening recommendations](reference/assurance-hardening-recommendations.md) | Reviewed findings, safeguards, limitations and verification criteria |
+| [Open-source capability assessment](reference/open-source-capability-assessment.md) | Ten upstream tools compared against existing factory, adoption decisions, validation and subscription fit |
 | [Local desktop + subscriptions](reference/local-desktop-subscription-architecture.md) | Claude Ultra and ChatGPT Codex authentication, initial runtime and future adapters |
 | [Multi-project architecture](reference/factory-multi-project-architecture.md) | How one factory serves many project repos |
 | [Context7](reference/context7-docs-mcp.md), [Modern Web Guidance](reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
@@ -140,6 +141,10 @@ The target is to enforce these by the platform (branch protection, token scopes,
 | **L4** | Intake to deploy for low-risk work; you set policy | Step 6 |
 
 The working factory has the machinery for L2 and an approver. On evidence it is still a supervised pilot: one job, merged by hand. Unattended merging remains disabled by default.
+
+## Open-source adoption policy
+
+The [upstream comparison](reference/open-source-capability-assessment.md) evaluates Spec Kit, Agent Skills, OpenHands SDK, Agent Client Protocol, Temporal, Conftest, Semgrep, Trivy, Gitleaks and Renovate. **No new third-party tools are automatically installed** by this review. Adopt low-overhead deterministic safeguards first: Agent Skills validation, Gitleaks, Trivy and Semgrep. Pilot Spec Kit, Conftest and ACP in isolation. Defer OpenHands, Temporal and Renovate until clear evidence justifies their operational cost. Every adoption requires version pinning, provenance/licence checks, a benchmark and a rollback route.
 
 ## Planned Integrations
 
