@@ -40,6 +40,13 @@
     "base": 5100,
     "step": 10
   },
+  "dev_server": [
+    "node",
+    "node_modules/next/dist/bin/next",
+    "dev",
+    "-p",
+    "{port}"
+  ],
   "prices_usd_per_mtok": {
     "claude-fable-5-1": {
       "input": 10.0,

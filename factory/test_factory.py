@@ -160,32 +160,36 @@ def test_frontier_releases_only_unblocked_issues():  # P1-08
     assert asked == [10, 11], "an issue already labelled factory needs no blocker lookup"
 
 
-def test_one_dev_server_per_review():  # fix 7, and fix 3's browser
-    j = {"id": "990-devserver", "worktree": str(ROOT), "agents": {"reviewers": {"code": "haiku", "ux": "sonnet", "ui": "haiku"}}}
+def test_one_dev_server_per_review():  # fix 7: one shared server, stopped with its children
+    j = {"id": "990-devserver", "worktree": str(TMP), "agents": {"reviewers": {"code": "haiku", "ux": "sonnet", "ui": "haiku"}}}
     (TMP / j["id"]).mkdir()
     port = job.port(j, 1)
     assert not proc.listening(port), f"something already listens on {port}"
-    job.start_dev_server(j)
-    first = proc.listening(port)
-    assert first, "no dev server after start_dev_server"
-    job.start_dev_server(j)  # the second reviewer, or a resume: no second server
-    assert proc.listening(port) == first
-    shot = TMP / "phone.png"
-    script = ("const { chromium } = require('@playwright/test');(async () => {"
-              "const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 375, height: 900 } });"
-              f"await p.goto('http://localhost:{port}/member'); await p.screenshot({{ path: {json.dumps(shot.as_posix())} }});"
-              "console.log(await p.innerText('body')); await b.close(); })();")
-    page = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=120)
-    assert page.returncode == 0, page.stderr
-    assert "Fictional organisation" in page.stdout and shot.stat().st_size > 0
+    saved = job.CONFIG.get("dev_server")
+    job.CONFIG["dev_server"] = [sys.executable, "-m", "http.server", "{port}"]  # stands in for the project's server
+    try:
+        job.start_dev_server(j)
+        first = proc.listening(port)
+        assert first, "no dev server after start_dev_server"
+        job.start_dev_server(j)  # the second reviewer, or a resume: no second server
+        assert proc.listening(port) == first
+    finally:
+        job.CONFIG["dev_server"] = saved
     stopped = proc.stop_port(port)
     time.sleep(2)
     assert not proc.listening(port), "the dev server is still listening after stop_port"
     assert not any(alive(p) for p in stopped)
-    leftovers = subprocess.run(["powershell", "-NoProfile", "-Command",
-                                f"Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | ? CommandLine -match 'dev -p {port}' | % ProcessId"],
-                               capture_output=True, text=True).stdout.split()
-    assert not leftovers, f"next dev processes left after stop_port: {leftovers}"
+
+
+def test_no_dev_server_without_config():
+    j = {"id": "991-nodev", "worktree": str(TMP), "agents": {"reviewers": {"ui": "haiku"}}}
+    saved = job.CONFIG.pop("dev_server", None)
+    try:
+        job.start_dev_server(j)  # returns at once, starts nothing
+        assert not proc.listening(job.port(j, 1))
+    finally:
+        if saved is not None:
+            job.CONFIG["dev_server"] = saved
 
 
 if __name__ == "__main__":

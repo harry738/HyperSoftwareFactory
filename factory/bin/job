@@ -533,6 +533,8 @@ def advance(job, stage):
 # ---- Review dev server ------------------------------------------------------
 # binley: Next allows one `next dev` per folder, so the ux and ui reviewers share
 # one server, started when the job enters review and stopped when it leaves.
+# The command is config.json `dev_server`, run in the worktree with {port}
+# filled in; leave it out for a project with no pages to review.
 
 
 def port(job, offset):
@@ -541,13 +543,12 @@ def port(job, offset):
 
 
 def start_dev_server(job, wait_seconds=180):
-    if not {"ux", "ui"} & set(reviewers(job)):
+    if not ({"ux", "ui"} & set(reviewers(job)) and CONFIG.get("dev_server")):
         return
     p = port(job, 1)
     if not proc.listening(p):
         proc.stop_port(port(job, 0))  # a builder's leftover server would hold the folder
-        next_bin = Path(job["worktree"]) / "node_modules" / "next" / "dist" / "bin" / "next"
-        proc.spawn_detached(["node", str(next_bin), "dev", "-p", str(p)],
+        proc.spawn_detached([a.replace("{port}", str(p)) for a in CONFIG["dev_server"]],
                             cwd=job["worktree"], log_path=job_dir(job["id"]) / "dev-server.log")
     # Wait for the first page, which also compiles it, so reviewers don't time out on it.
     deadline = time.monotonic() + wait_seconds
