@@ -45,16 +45,20 @@ def git(worktree, *args):
 
 
 def protected_changes(worktree):
-    """Existing files under protected_paths that the branch modified or deleted."""
-    diff = git(worktree, "diff", "--name-status", f"origin/{CONFIG['base_branch']}...HEAD")
+    """Reject all protected paths changed by the branch, including new files.
+
+    Use NUL-delimited names to support unusual filenames, and disable rename
+    detection so a rename is checked as both a deletion and an addition.
+    """
+    diff = git(worktree, "diff", "--name-status", "-z", "--no-renames",
+               f"origin/{CONFIG['base_branch']}...HEAD")
+    entries = diff.rstrip("\0").split("\0") if diff else []
+    if len(entries) % 2:
+        die("malformed git --name-status output")
     hits = []
-    for line in diff.splitlines():
-        status, *paths = line.split("\t")
-        if status.startswith("A"):
-            continue
-        old = paths[0]  # for renames and copies, the original path
-        if any(fnmatch.fnmatch(old, pattern) for pattern in CONFIG["protected_paths"]):
-            hits.append(f"{status[0]} {old}")
+    for status, path in zip(entries[::2], entries[1::2]):
+        if any(fnmatch.fnmatch(path, pattern) for pattern in CONFIG["protected_paths"]):
+            hits.append(f"{status} {path}")
     return hits
 
 
