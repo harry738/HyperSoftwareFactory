@@ -391,16 +391,18 @@ def effective_risk(job):
     changed = git(job, "diff", "--name-only", "-z", "--no-renames",
                   f"origin/{BASE}...HEAD").stdout.rstrip("\0").split("\0")
     patterns = CONFIG.get("risk_paths", {})
-    risk = "medium"  # unmatched changes never silently become low
-    for tier in ("high", "medium", "low"):
-        if any(fnmatch.fnmatch(p, pattern) for p in changed if p
-               for pattern in patterns.get(tier, [])):
-            risk = tier
-            break
-    model_risk = (job.get("intake") or {}).get("risk", "medium")
     rank = {"low": 0, "medium": 1, "high": 2}
+    # Classify EVERY changed path. A low-risk document must never downgrade
+    # another unknown or high-impact change in the same pull request.
+    tiers = []
+    for path in filter(None, changed):
+        matched = [tier for tier in rank
+                   if any(fnmatch.fnmatch(path, pat) for pat in patterns.get(tier, []))]
+        tiers.append(max(matched, key=rank.get) if matched else "medium")
+    path_risk = max(tiers, key=rank.get) if tiers else "medium"
+    model_risk = (job.get("intake") or {}).get("risk", "medium")
     require(model_risk in rank, f"unrecognised intake risk {model_risk!r}")
-    return max((risk, model_risk), key=rank.get)
+    return max((path_risk, model_risk), key=rank.get)
 
 
 def unattended_merge_blocker(job):
