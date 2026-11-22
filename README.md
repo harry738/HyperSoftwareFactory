@@ -1,131 +1,122 @@
 # 🏭 HyperSoftwareFactory
 
-**Build, verify, and deploy software autonomously — across multiple projects.**
+**A reference architecture for building, verifying, and deploying software with AI agents — across multiple projects.**
 
-A production-grade automated pipeline that takes raw signals (social intake, bugs, requirements, alerts) and produces deployed, verified, monitored software. Built on Hermes, Claude Code, and GitHub.
+The factory takes raw signals (social intake, bugs, requirements, alerts) and aims to produce deployed, verified, monitored software, using Hermes, Claude Code, and GitHub.
+
+> **Status: design stage.** This repo holds the architecture, a build plan, a project registry, and an onboarding script. The pipeline itself is not built yet. The [build plan](reference/build-plan.md) says what to build, in what order, and how to tell each step is done.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone
 git clone https://github.com/harry738/HyperSoftwareFactory.git
 cd HyperSoftwareFactory
+pip install -r requirements.txt
 
-# Add a new project to the factory
-python3 scripts/factory-onboard.py --interactive
-
-# Then tell the factory:
-# "run intake for <project-name>"
+# Register a project with the factory
+python scripts/factory-onboard.py --interactive
 ```
+
+The script adds the project to [`config/projects.yaml`](config/projects.yaml) and writes draft roadmap files to `onboarding/<slug>/` for you to review and push to the project repo. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`).
 
 ## Architecture
 
 ```
-SIGNALS ─▶ INTAKE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─▶ DEPLOY ─▶ MONITOR ─▶ LEARN
-                │          │         │          │          │            │
-            Gate 1      Gate 2    Build    Gate 3     Metrics      Kaizen
-           (Council)  (Council)  Floor   (Council)  Dashboard     Feedback
+SIGNALS ─▶ INTAKE ─▶ TRIAGE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─▶ DEPLOY ─▶ MONITOR ─▶ LEARN
+                       │           │                  │                         │
+                    Gate 1      Gate 2             Gate 3                    Weekly
+                   (triage)  (architecture)       (deploy)                   Kaizen
 ```
 
-7 stages, 4 council gates, 5 security boundaries.
+8 stages, 3 council gates, 1 weekly Kaizen review, 5 security boundaries.
 
-[Read the full reference architecture →](reference/software-factory-reference-architecture.md)
-
-## Contents
-
-| Directory | What's in it |
+| Document | What it covers |
 |---|---|
-| [`reference/`](reference/) | Full architecture docs, integrations (Context7, Modern Web Guidance) |
-| [`config/`](config/) | Central project registry (`projects.yaml`) |
-| [`scripts/`](scripts/) | Onboarding wizard |
+| [Reference architecture](reference/software-factory-reference-architecture.md) | Stages, gates, verification, security, observability |
+| [Build plan](reference/build-plan.md) | Walking-skeleton sequence with exit criteria per step |
+| [Multi-project architecture](reference/factory-multi-project-architecture.md) | How one factory serves many project repos |
+| [Context7](reference/context7-docs-mcp.md), [Modern Web Guidance](reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
 
-## How It Works
+## How It Is Designed To Work
 
-### Signal Intake
-Social links, bug reports, customer feedback, and alerts enter through a triage queue. Classified and routed to the appropriate project.
+### Signal intake
+Social links, bug reports, customer feedback, and alerts enter a triage queue and are routed to a project. External content is untrusted: it is summarised by a tool-less model call before any agent that can write code sees it.
 
-### Council Gates (2 tiers)
-- **Fast Council** (Chair-only) — triage verdicts in <2 min, ~$0.50
-- **Full Council** (4 models: Chair, Strategist, Pragmatist, Builder) — architecture review in <10 min, ~$3-7
+### Council gates (2 tiers)
+- **Fast Council** (Chair only) — triage and medium-risk verdicts
+- **Full Council** (Chair, Strategist, Pragmatist, Builder) — architecture review
 
-### Build Floor
-Approved specs decompose into parallel Claude Code subagents (Ultracode pattern, up to 256 concurrent). Each subagent:
-- Loads **Context7** (Upstash MCP) for current, version-specific library documentation — eliminates hallucinated deprecated API calls
-- Consults **Modern Web Guidance** (Google Chrome v1.0, 100+ guides) for web best practices — accessibility, performance, security, Baseline-aware
-- Follows Poteto Mode playbooks (bug → investigate → fix → verify / feature → spec → test → implement)
-- Runs in isolated worktree, max 3 review-fix cycles
+Council verdicts are advisory. High-risk changes always need the operator's approval.
 
-### Independent Verification
-Structural separation with read-only reviewers:
-- **Tester** — writes tests from spec only (never sees implementation)
-- **Code Reviewer** — dual-axis: standards + spec compliance
-- **Anti-Slop Lint** — ~100 TypeScript rules + complexity delta tracking
+### Build floor
+An approved spec is built by Claude Code in an isolated worktree, following a playbook per task type (bug → reproduce → investigate → fix → verify; feature → spec → test → implement), with at most 3 review-fix cycles. Parallel subagents come later and only on disjoint modules.
+
+### Independent verification
+Verifiers run in a separate job with read-only tokens, so they cannot modify the code they review:
+- **Tester** — writes tests from the spec only, never from the implementation
+- **Code Reviewer** — standards + spec compliance
+- **Anti-Slop Lint** — lint rules + complexity delta
 - **Security Scanner** — supply chain, credentials, egress
-- **Behavioural Verifier** — runs the change like a user would
+- **Behavioural Verifier** — runs the change as a user would
 
-Reviewers have read-only permissions — they physically cannot modify code.
-
-### Security Boundaries
+### Security boundaries
 
 | Boundary | What it blocks |
 |---|---|
-| **Isolation** | Agent can't touch host or other tenants |
-| **Egress** | Default-deny gateway, allowlist only |
-| **Supply chain** | Read-only package registries, unapproved hosts denied |
-| **Credentials** | Placeholder in sandbox, gateway injects real key |
-| **Budget** | Hard USD/token/time per run, pinned model versions |
+| **Isolation** | Agent can't touch the host or other projects |
+| **Egress** | Default-deny, allowlist only |
+| **Supply chain** | Unapproved package hosts denied |
+| **Credentials** | Real secrets never enter the agent sandbox |
+| **Budget** | Hard USD/token/time cap per run, pinned model versions |
 
-### Observability
-Every stage emits structured events. Prometheus metrics track: stage durations, LLM cost per feature, cycle time, agent utilization, code complexity deltas.
-
-### Kaizen Feedback Loop
-Weekly council reviews build failures, deploy incidents, cost data, and cycle times. Systemic issues mint new improvement items.
+### Observability and Kaizen
+Every stage transition appends one event row. A weekly review reads failures, cost, cycle time, and escape rate from that log and mints improvement items.
 
 ## Hard Constraints
 
-1. **No unreviewed output** — every PR reviewed by at least one independent verifier
-2. **Evidence-based verification** — bare "PASS" is treated as INCONCLUSIVE
-3. **Anti-slop gate** — complexity delta > 0.5 blocks for architecture review
+1. **No unreviewed output** — every PR is reviewed by at least one independent verifier
+2. **Evidence-based verification** — a bare "PASS" is treated as INCONCLUSIVE
+3. **Anti-slop gate** — a complexity increase above 50% on touched files blocks the PR for architecture review
 4. **Max 3 review-fix loops** — prevents infinite agent cycles
-5. **All secrets stay outside sandbox** — credential injection pattern only
+5. **All secrets stay outside the sandbox**
 
-## Maturation Levels
+These are enforced by the platform (branch protection, token scopes, runner budgets), not by agent instructions.
 
-| Level | Autonomy | Human involvement |
+## Autonomy Levels
+
+| Level | What runs without you | Earned by |
 |---|---|---|
-| **L1** | Assisted — human reviews every PR | High |
-| **L2** | Parallel agents + Poteto Mode | Human reviews only PRs |
-| **L3** | Independent verifier + security gates | Auto-merge low-risk |
-| **L4** | Full autonomous loop | Human sets policy only |
+| **L1** | Build to PR; you review every PR | Build plan Step 1 |
+| **L2** | Build + checks + verifiers | Step 3 |
+| **L3** | Low-risk merge and deploy | Step 5 |
+| **L4** | Intake to deploy for low-risk work; you set policy | Step 6 |
 
-## Integrations
+## Planned Integrations
+
+None of these is wired in yet, and their claims are the vendors' own.
 
 | Tool | Stage | What it provides |
 |---|---|---|
-| **Context7** (Upstash) | Build Floor | Current, version-specific library docs via MCP — free tier: 1,000 calls/month |
-| **Modern Web Guidance** (Google Chrome) | Build Floor + Verification | 100+ expert-verified web best practices across 17 disciplines — Apache 2.0 |
-| **Crawl4AI** | Research Scan | JS-rendered page extraction with optional Chrome cookie authentication |
-| **TestSprite 4.0** | Verification (recommended) | Independent testing agent — 94% bug-finding accuracy, $4.60/200 tests |
+| **Context7** (Upstash) | Build | Current, version-specific library docs via MCP |
+| **Modern Web Guidance** (Google Chrome) | Build + Verify | Web platform best practices, Baseline-aware |
+| **Crawl4AI** | Intake research | JS-rendered page extraction |
 
-## Project Configuration
+## Development
 
-Projects are registered in [`config/projects.yaml`](config/projects.yaml). Each project gets its own GitHub repo, roadmap, and build queue.
-
-Add new projects with:
 ```bash
-python3 scripts/factory-onboard.py --interactive
+python scripts/test_factory_onboard.py   # self-check for the onboarding script
 ```
 
 ## Contributing
 
-1. Read the [reference architecture](reference/software-factory-reference-architecture.md) to understand the 7 stages, 4 council gates, and 5 security boundaries
+1. Read the [reference architecture](reference/software-factory-reference-architecture.md) and the [build plan](reference/build-plan.md)
 2. Open an issue to discuss your proposed change
-3. Submit a PR with design changes or new integrations
+3. Submit a PR
 
 ## Origin
 
-Designed for agentic software development. Sources: Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), Dexter Horthy — State of Software Factories (Agentic AI Foundation, 2026), Google Antigravity patterns, arXiv meta-engineering harness.
+Synthesised from public material on agentic software development: Factory.ai, Claude Code, Islo's security architecture, Matt Pocock's skills, Lauren Tan's Poteto Mode, and Dexter Horthy's talk on software factories.
 
-**License:** MIT
+**License:** [MIT](LICENSE)

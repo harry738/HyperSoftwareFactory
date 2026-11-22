@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+# Draft files from scripts/factory-onboard.py — they belong in the project repo, not here
+onboarding/
