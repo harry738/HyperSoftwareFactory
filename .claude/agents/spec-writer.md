@@ -33,6 +33,8 @@ in the main checkout; your one file goes there.
 ## Write spec.md
 
 ```markdown
+SCOPE_CHANGE: no | yes
+
 # <short title>
 
 > Issue #<n>: <issue title>
@@ -53,6 +55,12 @@ a command to run, a page and what it should show, or a file that should contain
 something. The builder tests against this list and the approver checks it, so
 every item must be checkable by someone who only has the repo.
 
+## Acceptance criteria traceability
+Map EVERY original issue acceptance criterion to its spec criterion number.
+Mark retained, changed, removed or deferred explicitly; never silently narrow
+a criterion. If the issue has no structured acceptance criteria, state that and
+map each separately identifiable requirement. Do not invent issue criteria.
+
 ## Out of scope
 What a reasonable builder might be tempted to do but must not, including
 everything intake left out.
@@ -64,6 +72,8 @@ The approver escalates to a human when one of these is a product decision.
 
 ## Rules
 
+- The first line must be `SCOPE_CHANGE: no` or `SCOPE_CHANGE: yes`. Set yes if any original criterion is narrowed, removed or deferred, even if intake already approved a narrower slice; this requires a human to approve the change. Do not use no when traceability is uncertain.
+- The `## Acceptance criteria traceability` heading and mappings are mandatory; missing or unverified mappings require escalation.
 - `## Summary` comes right after the issue line: 3 to 5 short bullets a human
   can skim on the dashboard. The detail goes in the sections below it.
 - Don't stop to ask. Intake already asked the author everything only they
