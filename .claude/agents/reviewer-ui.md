@@ -86,6 +86,7 @@ and governance screens are desktop. New screens reuse the tokens: no new hex col
 
 ```markdown
 VERDICT: PASS | CHANGES | BLOCKED
+COMMIT: <full SHA from git rev-parse HEAD>
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
