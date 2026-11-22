@@ -85,6 +85,7 @@ can fail live, and a human always one step away.
 
 ```markdown
 VERDICT: PASS | CHANGES | BLOCKED
+COMMIT: <full SHA from git rev-parse HEAD>
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
@@ -97,7 +98,7 @@ Non-blocking observations. Optional.
 ```
 
 - The first line must be exactly `VERDICT: PASS`, `VERDICT: CHANGES` or
-  `VERDICT: BLOCKED`.
+  `VERDICT: BLOCKED`. Include `COMMIT: <full SHA>` on the second line, obtained from the actual worktree HEAD.
 - Use CHANGES only for problems a visitor would actually hit that are in scope
   for the spec. Put matters of taste under Notes.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
