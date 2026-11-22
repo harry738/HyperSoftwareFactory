@@ -4,6 +4,20 @@
 
 ---
 
+## Delivery constraint — desktop + existing subscriptions (2026-11-22)
+
+**First operating environment:** Claude Code in Claude Desktop's Code tab (or the official local Claude Code CLI), signed in using the operator's **Claude Ultra subscription**. The optional second coding engine is **OpenAI Codex**, signed in locally via the operator's **ChatGPT subscription**. This initial version must not require separate Anthropic/OpenAI API keys, Kubernetes, remote runners or a hosted orchestration service. Provider limits must be observed; no silent switch to paid APIs.
+
+The working Claude Code pipeline is already local and subscription-compatible when invoked inside a supported Claude Code session. Codex orchestration is **not yet integrated**: initial Codex use is operator-invoked, as a separate independent reviewer. See [local desktop/subscription architecture](local-desktop-subscription-architecture.md) for actual versus planned features and vendor sign-in boundaries.
+
+## Assurance hardening status (2026-11-22 PR)
+
+The [assurance hardening recommendations](assurance-hardening-recommendations.md) introduce commit-bound reviews, protected newly added files and rename destinations, deterministic risk floors, explicit scope-change declarations, portable CI and a **default-off unattended merge policy**.
+
+They are candidate changes in a review PR, **not yet validated as a complete end-to-end workflow**. Before Step 1 exits, run the new unit tests on both Windows and Linux, exercise one approved PR that goes to `needs-human`, and verify an operator can merge it manually without altering the branch. Risk classification requires per-project review. Independently test the path-scope and acceptance-criteria guards.
+
+Priority order: harden safety controls and desktop subscription authentication, **then** expand concurrency or autonomous merge. Green CI alone is insufficient proof of a complete autonomous software factory.
+
 ## Where we are
 
 The walking skeleton exists. `factory/` and `.claude/` run a GitHub issue through intake → spec → build → gate → review → approve → merge, orchestrated by one Claude Code session (`/factory run`), with state in `factory/jobs/` and `factory/bin/job` as its only writer.
@@ -53,7 +67,7 @@ Mostly the pilot report's own recommendations.
 
 | ID | Task | Source |
 |---|---|---|
-| S1.1 | Decide who merges: a permission rule for `factory/bin/job merge`, or every job stops at `approve` for you | Pilot rec. 1 |
+| S1.1 | Use default human-controlled merge while evidence is immature. Verify `merge_policy.allow_unattended: false` escalates without auto-merging; review policy before changing it | Pilot rec. 1 |
 | S1.2 | Git sign-in through `gh` for every clone the factory runs in, set by a setup script rather than by hand | Pilot rec. 2 |
 | S1.3 | One lock around `checks.sh` per worktree, so the builder and its Stop hook cannot run `npm ci` at once | Pilot rec. 4 |
 | S1.4 | Make `job advance` safe to re-run (post the issue comment last, or skip if one exists) | Pilot rec. 7 |
@@ -139,6 +153,17 @@ The microVM, service-mesh and credential-gateway designs in architecture §2.5 a
 Current level on evidence: **L1, not yet earned** (one job of the ten).
 
 Demotion rule: any escape on an unattended merge drops that project one level until the cause is fixed and recorded.
+
+## Additional subscription-first milestones
+
+| ID | Task | Exit criterion |
+|---|---|---|
+| D1 | Claude Desktop Code + Claude Ultra subscription-only smoke test on Windows | Real GitHub issue becomes a PR without API key or separate billed API usage |
+| D2 | Codex CLI login with ChatGPT subscription and manual second-opinion review | Operator can attach a Codex review to a PR without OpenAI API key |
+| D3 | Local subscription-mode preflight and quota exhaustion handling | API billing environment variables flagged; plan limit causes safe pause, no silent billing fallback |
+| D4 | Provider-neutral `AgentTask`/`AgentResult` schema and Codex adapter | One task works through both supported engines, with isolation and evidence retained |
+
+These milestones are separate from the provider's subscription usage limits and do not assume that a consumer subscription can be used as a general-purpose agent API. Start with D1 and D2 before D4.
 
 ## Deliberately deferred
 
