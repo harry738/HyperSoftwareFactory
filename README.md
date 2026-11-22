@@ -18,7 +18,7 @@ The factory takes GitHub issues today, and aims to take raw signals (social inta
 2. **OpenAI subscription:** Install the official **Codex CLI** locally and run `codex` to sign in with your ChatGPT account. Eligible ChatGPT subscriptions include Codex usage subject to limits. The existing factory does **not** yet invoke Codex; a provider adapter is planned and must use officially supported login/SDK interfaces.
 3. **Credentials:** Authenticate each official tool directly as the signed-in user. Do not extract session cookies, OAuth tokens or tokens from other apps, share subscription credentials, or silently fall back to separately billed APIs. Keep credentials outside worktrees and agent-visible files.
 4. **Quotas and budget:** Subscription usage is metered under provider-specific rate/weekly limits, **not** an unlimited dollar balance. The dashboard's `cost_usd` is an **API-equivalent estimate** for Claude subagents, not a subscription charge or remaining allowance. A plan-limit error must pause or escalate the job; never silently purchase API credits.
-5. **Execution:** Start with one local, supervised job (`concurrency: 1`), low-risk code changes, Git worktrees, and manual PR merging. Running a local control plane does not mean model inference happens offline. Cloud runners, paid APIs and unattended service accounts are optional later phases, not prerequisites.
+5. **Execution:** Start with one local, supervised job (`concurrency: 1`), low-risk code changes, Git worktrees, and manual PR merging. Run `python scripts/factory-doctor.py --subscription-only` before your first job; the preflight checks for local tools and accidental API-key variables but cannot prove a provider is logged in or report remaining quota. Running a local control plane does not mean model inference happens offline. Cloud runners, paid APIs and unattended service accounts are optional later phases, not prerequisites.
 
 See [Local desktop and subscription architecture](reference/local-desktop-subscription-architecture.md) for setup, provider boundaries and how the optional Codex integration should evolve. See official [Claude Code plan guidance](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-max-or-ultra-plan) and [OpenAI Codex plan guidance](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan).
 
@@ -154,7 +154,9 @@ None of these is wired in yet, and their claims are the vendors' own.
 ## Development
 
 ```bash
+python scripts/factory-doctor.py --subscription-only       # local tools and no accidental API keys
 python scripts/test_factory_onboard.py                     # self-check for onboarding
+python -m unittest discover -s scripts -p test_factory_doctor.py -v  # local preflight tests
 python -m unittest discover -s factory -p test_assurance.py -v  # portable assurance regression tests
 python factory/test_factory.py                             # Windows integration checks; run in a configured project
 ```
