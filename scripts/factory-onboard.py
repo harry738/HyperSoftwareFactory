@@ -1,301 +1,217 @@
 #!/usr/bin/env python3
 """
-Factory Onboarding Wizard — add a new project to the Software Factory.
+Factory Onboarding Wizard — register a project with the Software Factory.
 
 Usage:
-    python3 scripts/factory-onboard.py --interactive
-    python3 scripts/factory-onboard.py --name propinfo --repo harry738/propInfo.co.uk --council false
+    python scripts/factory-onboard.py --interactive
+    python scripts/factory-onboard.py --name propinfo --repo harry738/propInfo.co.uk --council fast
 
-Walks through project setup, creates config entry, and initialises the repo.
+What it does:
+    1. Adds the project to config/projects.yaml.
+    2. Writes draft roadmap files to onboarding/<slug>/ for you to review
+       and push to the project repo. It does NOT push anything itself.
+
+Requires PyYAML (pip install -r requirements.txt) and, for the repo check,
+an authenticated GitHub CLI (`gh auth login`).
 """
-import argparse, json, os, re, sys, urllib.request, urllib.error, yaml
+import argparse, re, subprocess, sys
+from datetime import date
 from pathlib import Path
-from datetime import datetime
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "projects.yaml"
-SCRIPTS_DIR = Path(__file__).resolve().parent
-HYPEROS_ROOT = Path(__file__).resolve().parent.parent
+import yaml
 
-# ── GitHub API helpers ──────────────────────────────────────────────────
+FACTORY_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = FACTORY_ROOT / "config" / "projects.yaml"
+CONFIG_HEADER = (
+    "# Software Factory — Project Configuration\n"
+    "# Add projects with `python scripts/factory-onboard.py --interactive`\n"
+    "# Or edit this file directly.\n\n"
+)
+ROADMAP_PATH = "docs/product/roadmap.yaml"
+INBOX_PATH = "docs/product/roadmap-inbox/"
+SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+CADENCES = ("weekly", "biweekly", "monthly", "none")
 
-def gh_token():
-    """Read GitHub token from gh config."""
-    hosts = Path.home() / ".config" / "gh" / "hosts.yml"
-    if hosts.exists():
-        for line in hosts.read_text().splitlines():
-            if "oauth_token:" in line:
-                return line.split(":", 1)[1].strip()
-    return os.environ.get("GH_TOKEN", "")
+# ── GitHub (via gh CLI: handles auth on every platform) ─────────────────
 
-def gh_api(method, path, data=None):
-    """Call GitHub API."""
-    token = gh_token()
-    if not token:
-        print("❌ No GitHub token found. Set GH_TOKEN or run `gh auth login`.")
-        sys.exit(1)
-    url = f"https://api.github.com/{path}"
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json",
-        "Content-Type": "application/json",
-    }
-    body = json.dumps(data).encode() if data else None
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+def repo_status(repo):
+    """Return 'exists', 'missing', or 'unknown' (auth, network, gh not installed)."""
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        err = e.read().decode()
-        print(f"❌ GitHub API error ({e.code}): {err[:300]}")
-        return None
+        r = subprocess.run(["gh", "api", f"repos/{repo}", "--silent"],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"  ⚠️  Could not run gh: {e}")
+        return "unknown"
+    if r.returncode == 0:
+        return "exists"
+    if "404" in r.stderr:
+        return "missing"
+    print(f"  ⚠️  GitHub check failed: {r.stderr.strip()[:200]}")
+    return "unknown"
 
-def check_repo(repo_full):
-    """Check if a repo exists and is accessible."""
-    data = gh_api("GET", f"repos/{repo_full}")
-    if data:
-        print(f"  ✅ Repo found: {data.get('full_name')} ({data.get('stargazers_count')}⭐)")
-        return True
-    return False
+def create_repo(repo, description):
+    """Create a PRIVATE repo. Make it public yourself if you mean to."""
+    r = subprocess.run(["gh", "repo", "create", repo, "--private", "--description", description],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        print(f"  ❌ Repo creation failed: {r.stderr.strip()[:200]}")
+    return r.returncode == 0
 
-# ── Config management ───────────────────────────────────────────────────
+# ── Config ──────────────────────────────────────────────────────────────
 
 def load_config():
-    """Load existing projects config."""
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return yaml.safe_load(f) or {"projects": {}}
-    return {"projects": {}}
+        config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    else:
+        config = {}
+    config.setdefault("projects", {})
+    return config
 
 def save_config(config):
-    """Save projects config."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    print(f"  ✅ Config saved to {CONFIG_PATH}")
+    body = yaml.safe_dump(config, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    CONFIG_PATH.write_text(CONFIG_HEADER + body, encoding="utf-8")
 
-# ── Repo initialisation ─────────────────────────────────────────────────
+# ── Core ────────────────────────────────────────────────────────────────
 
-def init_repo_structure(repo_full, project_slug):
-    """
-    Create initial roadmap files in the target repo via a PR.
-    We write files to a local checkout or create a branch via API.
-    For now: write a draft to the local filesystem for review.
-    """
-    output_dir = HYPEROS_ROOT / "onboarding" / project_slug
-    output_dir.mkdir(parents=True, exist_ok=True)
+def onboard(slug, repo, name=None, council="full", cadence="weekly", alert=None):
+    """Validate, add to config, write draft files. Returns the draft directory."""
+    if not SLUG_RE.match(slug):
+        raise ValueError("Slug must be 2-32 chars: lowercase letter first, then a-z 0-9 _ -")
+    if not REPO_RE.match(repo):
+        raise ValueError("Repo must be 'owner/repo' — not a URL")
+    if council not in ("full", "fast"):
+        raise ValueError("Council must be 'full' or 'fast'")
+    if cadence not in CADENCES:
+        raise ValueError(f"Cadence must be one of: {', '.join(CADENCES)}")
+    config = load_config()
+    if slug in config["projects"]:
+        raise ValueError(f"Project '{slug}' already exists in {CONFIG_PATH.name}")
 
-    # roadmap.yaml
-    roadmap = {
-        "meta": {
-            "project": project_slug,
-            "created": datetime.now().strftime("%Y-%m-%d"),
-            "last_updated": datetime.now().strftime("%Y-%m-%d"),
-            "rm_counter": 1,
-        },
-        "backlog": [],
-        "in_progress": [],
-        "staging": [],
-        "done": [{
-            "rm": "RM-0001",
-            "title": "Project setup — factory onboarding",
-            "status": "done",
-            "tier": 0,
-            "effort": 1,
-            "confidence": 1.0,
-            "created": datetime.now().strftime("%Y-%m-%d"),
-        }],
+    name = name or slug
+    today = date.today().isoformat()
+    entry = {
+        "name": name,
+        "repo": repo,
+        "roadmap": ROADMAP_PATH,
+        "inbox": INBOX_PATH,
+        # true = Full Council at Gate 2/3; false = Chair-only Fast Council everywhere
+        "council_enabled": council == "full",
+        "sprint_cadence": cadence,
+        "onboarded": today,
     }
-    with open(output_dir / "roadmap.yaml", "w") as f:
-        yaml.dump(roadmap, f, default_flow_style=False, sort_keys=False)
-    
-    # roadmap-inbox/
-    (output_dir / "roadmap-inbox").mkdir(exist_ok=True)
+    if alert:
+        entry["alert_channel"] = f"telegram:{alert}"
+    config["projects"][slug] = entry
+    save_config(config)
 
-    # .factory.md — project card
-    card = f"""# Project: {project_slug}
+    out = FACTORY_ROOT / "onboarding" / slug
+    (out / "roadmap-inbox").mkdir(parents=True, exist_ok=True)
+    (out / "roadmap-inbox" / ".gitkeep").touch()
+    roadmap = {
+        "meta": {"project": slug, "created": today, "last_updated": today, "rm_counter": 1},
+        "backlog": [], "in_progress": [], "staging": [],
+        "done": [{"rm": "RM-0001", "title": "Project setup — factory onboarding",
+                  "status": "done", "tier": 0, "effort": 1, "confidence": 1.0, "created": today}],
+    }
+    (out / "roadmap.yaml").write_text(
+        yaml.safe_dump(roadmap, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    (out / ".factory.md").write_text(f"""# Project: {name}
 
-**Full name:** {project_slug}
-**Repo:** {repo_full}
-**Onboarded:** {datetime.now().strftime("%Y-%m-%d")}
-**Factory status:** Active
+**Slug:** {slug}
+**Repo:** {repo}
+**Onboarded:** {today}
 
-## Configuration in HyperAISystemsOS
+Factory settings for this project live in `config/projects.yaml` in the
+HyperSoftwareFactory repo.
 
-See `config/projects.yaml` for this project's factory settings.
+- Roadmap: `{ROADMAP_PATH}` — managed by the factory pipeline.
+- Inbox: `{INBOX_PATH}` — build specs land here from the factory.
+""", encoding="utf-8")
+    return out
 
-## Roadmap
-
-`docs/product/roadmap.yaml` — managed by the factory pipeline.
-
-## Inbox
-
-`docs/product/roadmap-inbox/` — build specs land here from the factory.
-"""
-    with open(output_dir / ".factory.md", "w") as f:
-        f.write(card)
-
-    print(f"  ✅ Draft files created in {output_dir}/")
-    print(f"     Review and push to {repo_full}:")
-    print(f"     - docs/product/roadmap.yaml")
-    print(f"     - docs/product/roadmap-inbox/")
-    return output_dir
+def print_next_steps(slug, repo, out):
+    print(f"\n  ✅ '{slug}' added to {CONFIG_PATH}")
+    print(f"  ✅ Draft files written to {out}")
+    print(f"\n  Next steps (nothing has been pushed):")
+    print(f"  1. Review the drafts, then copy them into {repo}:")
+    print(f"       roadmap.yaml   → {ROADMAP_PATH}")
+    print(f"       roadmap-inbox/ → {INBOX_PATH}")
+    print(f"       .factory.md    → .factory.md")
+    print(f"  2. Commit config/projects.yaml in this repo.\n")
 
 # ── Interactive wizard ──────────────────────────────────────────────────
 
+def ask(prompt, valid, error):
+    while True:
+        value = input(prompt).strip()
+        if valid(value):
+            return value
+        print(f"  ❌ {error}")
+
 def interactive_wizard():
-    print("\n" + "=" * 60)
-    print("  FACTORY ONBOARDING WIZARD")
-    print("=" * 60)
-    print()
+    print("\n" + "=" * 60 + "\n  FACTORY ONBOARDING WIZARD\n" + "=" * 60 + "\n")
+    existing = load_config()["projects"]
+    slug = ask("  Project slug (e.g. 'propinfo'): ",
+               lambda s: SLUG_RE.match(s) and s not in existing,
+               "2-32 chars, lowercase, no spaces, and not already registered.")
+    name = input(f"  Full project name (default: {slug}): ").strip() or slug
+    repo = ask(f"  GitHub repo (e.g. 'harry738/{slug}'): ", REPO_RE.match,
+               "Format: 'owner/repo' — no full URL.")
 
-    # 1. Project name
-    while True:
-        slug = input("  Project slug (e.g. 'propinfo', 'startup'): ").strip().lower()
-        if re.match(r'^[a-z][a-z0-9_-]{1,32}$', slug):
-            break
-        print("  ❌ Slug must be 2-32 chars, lowercase, no spaces. Try again.")
-
-    # 2. Full name
-    full = input(f"  Full project name (e.g. '{slug}.co.uk'): ").strip() or slug
-
-    # 3. GitHub repo
-    while True:
-        repo = input(f"  GitHub repo (e.g. 'harry738/{slug}'): ").strip()
-        if "/" in repo and not repo.startswith("http"):
-            break
-        print("  ❌ Format: 'owner/repo' — no full URL.")
-
-    # 4. Check repo exists
     print(f"\n  Checking {repo}...")
-    exists = check_repo(repo)
-    if not exists:
-        create = input("  Repo not found. Create it? (y/n): ").strip().lower()
-        if create == "y":
-            data = gh_api("POST", "user/repos", {
-                "name": repo.split("/")[1],
-                "description": full,
-                "private": False,
-            })
-            if data:
-                print(f"  ✅ Repo created: {data.get('html_url')}")
-                exists = True
-        if not exists:
-            print("  ⚠️  Continuing without repo check. Files will be staged locally.")
-    
-    # 5. Council mode
-    print("\n  Council mode:")
-    print("    1. Full (4-model council + Chair synthesis)")
-    print("    2. Fast (Chair-only, for smaller projects)")
-    council_choice = input("  Choice (1/2): ").strip()
-    has_council = council_choice == "1"
+    status = repo_status(repo)
+    if status == "exists":
+        print("  ✅ Repo found")
+    elif status == "missing":
+        if input("  Repo not found. Create it as a PRIVATE repo? (y/n): ").strip().lower() == "y":
+            if create_repo(repo, name):
+                print(f"  ✅ Private repo created: https://github.com/{repo}")
+    else:
+        print("  ⚠️  Could not verify the repo. Continuing; drafts are local only.")
 
-    # 6. Sprint cadence
-    print("\n  Sprint cadence:")
-    print("    1. Weekly (Friday 22:00 kickoff)")
-    print("    2. Biweekly")
-    print("    3. Monthly")
-    print("    4. None (on-demand only)")
-    sprint_choice = input("  Choice (1/2/3/4): ").strip()
-    cadences = {"1": "weekly", "2": "biweekly", "3": "monthly", "4": "none"}
-    sprint_cadence = cadences.get(sprint_choice, "none")
+    council = "full" if input(
+        "\n  Council: 1 = Full (4-model), 2 = Fast (Chair-only). Choice (1/2): ").strip() == "1" else "fast"
+    choice = input("  Sprint cadence: 1 weekly, 2 biweekly, 3 monthly, 4 none. Choice: ").strip()
+    cadence = dict(zip("1234", CADENCES)).get(choice, "none")
+    alert = input("  Telegram chat ID for alerts (blank = none): ").strip() or None
 
-    # 7. Alert channel
-    alert = input("  Telegram chat ID for alerts (default: [YOUR_TELEGRAM_CHAT_ID]): ").strip() or "[YOUR_TELEGRAM_CHAT_ID]"
-
-    # ── Summary ──
-    print("\n" + "=" * 60)
-    print("  SUMMARY")
-    print("=" * 60)
-    summary = {
-        "slug": slug,
-        "full_name": full,
-        "repo": repo,
-        "has_council": has_council,
-        "sprint_cadence": sprint_cadence,
-        "alert_channel": f"telegram:{alert}",
-    }
-    for k, v in summary.items():
+    print("\n" + "=" * 60 + "\n  SUMMARY\n" + "=" * 60)
+    for k, v in [("slug", slug), ("name", name), ("repo", repo), ("council", council),
+                 ("cadence", cadence), ("alert", alert or "none")]:
         print(f"  {k}: {v}")
-
-    confirm = input("\n  Onboard this project? (y/n): ").strip().lower()
-    if confirm != "y":
-        print("  ❌ Cancelled.")
+    if input("\n  Onboard this project? (y/n): ").strip().lower() != "y":
+        print("  ❌ Cancelled. Nothing written.")
         return
-
-    # ── Execute ──
-    # Add to config
-    config = load_config()
-    config["projects"][slug] = {
-        "name": full,
-        "repo": repo,
-        "roadmap": "docs/product/roadmap.yaml",
-        "inbox": "docs/product/roadmap-inbox/",
-        "council_enabled": has_council,
-        "sprint_cadence": sprint_cadence,
-        "alert_channel": f"telegram:{alert}",
-        "onboarded": datetime.now().strftime("%Y-%m-%d"),
-    }
-    save_config(config)
-
-    # Create draft files
-    out = init_repo_structure(repo, slug)
-
-    print(f"\n  ✅ Project '{slug}' onboarded to the factory!")
-    print(f"\n  Next steps:")
-    print(f"  1. Review files in {out}/")
-    print(f"  2. Push to {repo}:")
-    print(f"     - docs/product/roadmap.yaml")
-    print(f"     - docs/product/roadmap-inbox/")
-    print(f"  3. Tell the factory: 'run intake for {slug}'")
-    print()
-
-# ── CLI mode ────────────────────────────────────────────────────────────
-
-def cli_onboard(args):
-    """Non-interactive onboarding from CLI args."""
-    config = load_config()
-    
-    # Validate slug is free
-    slug = args.name
-    if slug in config.get("projects", {}):
-        print(f"❌ Project '{slug}' already exists in config.")
-        sys.exit(1)
-
-    repo = args.repo
-    council = args.council.lower() in ("true", "yes", "y", "full")
-    cadence = getattr(args, "cadence", "weekly")
-
-    config["projects"][slug] = {
-        "name": getattr(args, "full_name", slug),
-        "repo": repo,
-        "roadmap": "docs/product/roadmap.yaml",
-        "inbox": "docs/product/roadmap-inbox/",
-        "council_enabled": council,
-        "sprint_cadence": cadence,
-        "alert_channel": f"telegram:{getattr(args, 'alert', '[YOUR_TELEGRAM_CHAT_ID]')}",
-        "onboarded": datetime.now().strftime("%Y-%m-%d"),
-    }
-    save_config(config)
-    init_repo_structure(repo, slug)
-    print(f"✅ Project '{slug}' onboarded.")
+    print_next_steps(slug, repo, onboard(slug, repo, name, council, cadence, alert))
 
 # ── Main ────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # emoji output on Windows consoles
     parser = argparse.ArgumentParser(description="Factory Onboarding Wizard")
     parser.add_argument("--interactive", action="store_true", help="Interactive wizard")
     parser.add_argument("--name", help="Project slug")
     parser.add_argument("--repo", help="GitHub repo (owner/repo)")
-    parser.add_argument("--council", default="true", help="Full council? (true/false)")
-    parser.add_argument("--cadence", default="weekly", help="Sprint cadence")
-    parser.add_argument("--full-name", help="Full project name")
-    parser.add_argument("--alert", default="[YOUR_TELEGRAM_CHAT_ID]", help="Telegram chat ID")
-
+    parser.add_argument("--council", default="full", choices=("full", "fast"), help="Council mode")
+    parser.add_argument("--cadence", default="weekly", choices=CADENCES, help="Sprint cadence")
+    parser.add_argument("--full-name", help="Full project name (default: slug)")
+    parser.add_argument("--alert", help="Telegram chat ID for alerts")
     args = parser.parse_args()
 
     if args.interactive or len(sys.argv) == 1:
         interactive_wizard()
     elif args.name and args.repo:
-        cli_onboard(args)
+        try:
+            out = onboard(args.name, args.repo, args.full_name, args.council, args.cadence, args.alert)
+        except ValueError as e:
+            sys.exit(f"❌ {e}")
+        if repo_status(args.repo) == "missing":
+            print(f"  ⚠️  {args.repo} does not exist on GitHub yet.")
+        print_next_steps(args.name, args.repo, out)
     else:
         parser.print_help()
+
+if __name__ == "__main__":
+    main()

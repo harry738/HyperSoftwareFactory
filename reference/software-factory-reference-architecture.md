@@ -1,14 +1,22 @@
-# HTS/HyperOS Software Factory — Reference Architecture
+# Software Factory — Reference Architecture
 
-**Version:** v1 (2026-11-19)
-**Status:** Design Draft
+**Version:** v1.1 (2026-11-22)
+**Status:** Target design. The working factory in `factory/` and `.claude/` implements part of it (issue intake, spec, build, gate, review, approve). The [build plan](build-plan.md) maps each section to what exists and what is next.
 **Source:** Synthesis of Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), arXiv meta-engineering harness, Dexter Horthy — State of Software Factories / Slop Bench (Agentic AI Foundation, 2026-10)
+
+> **Scope.** Sections 1–5 describe the generic factory. Section 6 holds notes specific to the first deployment (HTS, the Hyper Trading System), including components that live in that repo and not here: Buzz relay, Watchdog Bot, `council.py`, the HTS metrics collectors.
+>
+> **Unverified claims.** These came from talks and posts and have not been checked against primary sources: the SlopCodeBench 14.8% figure, the "~100 TypeScript rules" lint set, the Antigravity reviewer pattern, and every install command in section 5. Verify each before relying on it.
+
+**Terms.** *Hermes* is the orchestrating agent that triggers runs and sends notifications. *Council* is a panel of models that issues a verdict at a gate: **Fast** = Chair only, **Full** = Chair, Strategist, Pragmatist, Builder. *RM* is a roadmap item, the unit of work (`RM-XXXX`).
+
+**Canonical shape:** 8 stages (Intake, Triage, Spec, Build, Verify, Deploy, Monitor, Learn), 3 council gates (Gate 1 triage, Gate 2 architecture, Gate 3 deploy), 1 weekly Kaizen review, 5 security boundaries.
 
 ---
 
 ## 1. Architecture Overview
 
-The Software Factory is an end-to-end automated pipeline that takes raw signals (social intake, bugs, requirements, alerts) and produces deployed, verified, monitored software. It is built on our existing toolchain: Hermes, Claude Code, Buzz relay, GitHub, Docker.
+The Software Factory is an end-to-end automated pipeline that takes raw signals (social intake, bugs, requirements, alerts) and produces deployed, verified, monitored software. It is built on Hermes, Claude Code, GitHub and Docker.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -22,13 +30,13 @@ The Software Factory is an end-to-end automated pipeline that takes raw signals 
 │     │                       ▼                      ▼                  ▼        ▼          │
 │     └─────────────────────────────────── FEEDBACK LOOP ───────────────────────────────────┘
 │                                                                          │
-│     STAGES:   Signal      Plan      Build       Check      Ship      Observe    Improve
-│               Intake      & Spec    Floor       + Secure   + Deploy   + Metrics  + Kaizen
+│     Gate 1 sits in Triage, Gate 2 between Spec and Build, Gate 3 between Verify and Deploy.
+│     Learn ends in the weekly Kaizen review, which feeds new signals back to Intake.
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 0.1 Governing Principle: Forward Pressure + Backpressure
+### 1.1 Governing Principle: Forward Pressure + Backpressure
 
 Dexter Horthy (CEO of HumanLayer, 2026-10 talk): *"More forward pressure without useful backpressure creates a larger pile of output."*
 
@@ -43,7 +51,7 @@ An agent can iterate against backpressure checks before consuming human attentio
 
 **SlopCodeBench (University of Wisconsin, 2026):** Models are tested by extending their own code across successive feature requests — the best model scored 14.8%. Reason: RL rewards one-shot correctness, not maintainability. Bad architecture shows up months later, not in a prompt. The factory's backpressure layer is the structural response to this.
 
-### 0.2 Governing Principle: The Cost Shifts to Reading
+### 1.2 Governing Principle: The Cost Shifts to Reading
 
 Horthy: *"Engineering teams shipping AI-written code still have to read it."*
 
@@ -51,14 +59,14 @@ Producing a large PR is cheap. Understanding it is not. Unreviewed output shifts
 
 1. **Evidence-based verification** — every verifier must show proof, not just claim (PASS/FAIL + evidence block)
 2. **Anti-slop lint rules** — ~100 TypeScript rules (Dylan Moloy) that catch architecture decay before merge
-3. **Maintainability scoring** — code complexity deltas tracked per PR, trended over time (Section 3.2)
-4. **Small PRs** — Poteto Mode's narrow stacked PRs (one change per chain) keep diffs readable
+3. **Maintainability scoring** — code complexity deltas tracked per PR, trended over time (defined in Section 2.4)
+4. **Small PRs** — narrow stacked PRs (one writer per chain) keep diffs readable
 
-### 0.3 Governing Principle: The Dumb Zone
+### 1.3 Governing Principle: The Dumb Zone
 
 Model degradation at ~100K tokens of context is real. The factory mitigates this with **plan files that survive context resets** — the handover/vault/spec pattern we already use. A plan file compresses intent into a maintained markdown document, allowing agents to resume from clean context without losing the architecture.
 
-### 1.1 Layered Architecture
+### 1.4 Layered Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -106,9 +114,10 @@ All signals that enter the factory:
 | Kaizen findings | Weekly report | Route: system improvement → council |
 | Manual (you) | "Build this" | Direct to spec queue (skip triage) |
 
+**Trust boundary:** everything from outside (social posts, emails, web pages, issue text from strangers) is untrusted input and may contain instructions aimed at the agents. Raw external content is summarised into a fixed schema by a model call that has no tools. Only that summary reaches any agent that can write code, mint work, or call tools. Manual signals from the operator are the only trusted source.
+
 **Triage rules:**
-- Trading content → HTS build queue
-- Startup content → HyperOS build queue  
+- Content is routed to a project by the slug in `config/projects.yaml` (for example trading content → `hts`)  
 - Bug → Poteto `bug-fix` playbook (investigation before fix)
 - Alert → Ops playbook (diagnose before resolve)
 - Unclear → Council fast mode (Chair only, 2 min verdict)
@@ -133,7 +142,9 @@ Signal → Fast Council (Gate 1)
                          └─ Rework → back to Spec
 ```
 
-**RM Minting** happens here: `grep max RM → mint RM-XXXX → roadmap.yaml entry → commit`
+**RM minting** happens here. The ID must come from an atomic source, because parallel runs that each "grep the max RM" will mint duplicates. Use the GitHub issue number as the ID and derive `RM-XXXX` from it, then write the `roadmap.yaml` entry.
+
+**Spec contract:** every spec states its acceptance criteria and its **public interface** (function signatures, routes, schemas). The spec-only Tester in Section 2.4 cannot write compilable tests without it.
 
 ### 2.3 Build Floor (parallel execution)
 
@@ -152,7 +163,7 @@ Spec + tickets → Claude Code Ultracode session
      └────┬─────┴────┬─────┴────┬─────┴────┬─────┘
           │ verify   │ verify   │ verify   │ verify
           └────┬─────┴────┬─────┴────┬─────┴────┘
-    4. Convergence merge → single PR
+    4. Integrate → one PR, or one stacked chain of narrow PRs for large specs
     5. Matt Pocock /code-review on PR
 ```
 
@@ -167,7 +178,8 @@ Spec + tickets → Claude Code Ultracode session
 **Modern Web Guidance (MWG):** Before writing web features, agents consult **Google Chrome's Modern Web Guidance** (v1.0, Apache 2.0, 100+ guides). MWG provides expert-verified patterns for accessibility, CSS, HTML, performance, security, forms, and more. Agents reference MWG guides instead of generating outdated JS patterns. The project's Baseline target (declared in `CLAUDE.md` or `AGENTS.md`) determines which Browser APIs are available.
 
 **Rules:**
-- Max 256 concurrent agents (Claude Code limit)
+- Concurrency cap set per project; start at 1 and raise it only when builds are reliable
+- Parallel subagents work on disjoint modules only. Two agents never write the same files; anything that touches shared code is done by one writer after the parallel work lands
 - 3 review-fix cycles max per sub-task
 - Each subagent in isolated worktree copy
 - No mid-run user input
@@ -221,9 +233,19 @@ This prevents the "reviewer that also fixes" pattern, which undermines structura
 
 **Scoring:** Each verifier emits structured output. 3-review-fix loop cap before escalation.
 
-**Maintainability delta:** The Anti-Slop Lint Agent computes a complexity score before and after the PR change (cyclomatic complexity, coupling, file size, tech debt markers). A positive delta (code got more complex) triggers a FLAG — the PR author must justify why the complexity increase is necessary.
+**Complexity delta (definition):** for the files a PR touches, `delta = (C_after − C_before) / C_before`, where `C` is total cyclomatic complexity measured by a deterministic tool, not by a model. So `0.02` means 2% more complex and `0.5` means 50% more.
+- `delta ≤ 0` → PASS
+- `0 < delta ≤ 0.5` → FLAG: the PR must state why the increase is needed
+- `delta > 0.5` → FAIL: blocked for architecture review
+- PRs that only add new files have no `C_before`; they are FLAGged for review, never auto-failed
+
+Coupling, file size and tech-debt markers are reported alongside but do not gate.
+
+**Enforcement:** the rules in this section are enforced by the platform, not by agent instructions: branch protection requires the verifier checks, and verifier jobs run with read-only tokens.
 
 ### 2.5 Security Gates
+
+The "Tech" column is the long-term target. The [build plan](build-plan.md) (Step 4) starts with simpler equivalents: ephemeral CI runners, environment-scoped secrets, runner-enforced budgets, an egress allowlist. Isolation and budgets must be in place **before** any autonomous build runs.
 
 | Boundary | Enforcement | Tech |
 |---|---|---|
@@ -247,11 +269,15 @@ Verified PR → Risk assessment:
          → Full Council (4-model) → verdict → merge → deploy
 ```
 
+**Risk tier is computed from changed paths**, using per-project glob rules in `config/projects.yaml`. A change matching no rule is MEDIUM. A model may raise a tier but never lower it. HIGH always needs the operator's approval, whatever the Council says.
+
+**Rollback:** every deploy keeps the previous release. If the post-deploy health check fails, the pipeline rolls back automatically, labels the item blocked, and alerts.
+
 ### 2.7 Observability Layer
 
 Every stage emits structured events. Full system described in Section 3.
 
-### 2.8 Feedback Loop (Gate 4 — weekly)
+### 2.8 Feedback Loop (weekly Kaizen review)
 
 ```
 Production signals → Kaizen report:
@@ -279,17 +305,18 @@ Borrowing from HTS's monitoring dashboard pattern (monitor/collector, metrics_lo
 
 ### 3.1 Factory Metrics Schema
 
-Drizzle table `factory_events`:
+Drizzle table `factory_events`. It is **append-only**: one row per stage transition, never updated. Current state and cumulative cost are derived by query. Start with this one table and SQL; the metrics, endpoints and dashboard in 3.2–3.6 come later (build plan S6.7).
 
 ```typescript
 export const factoryEvents = pgTable("factory_events", {
   id: serial("id").primaryKey(),
   // Core identifiers
   project: varchar("project", { length: 32 }).notNull(),  // "hts" | "hyperos" | "propinfo"
-  stage: varchar("stage", { length: 16 }).notNull(),  // "intake" | "triage" | "spec" | "gate1" | "build" | "verify" | "gate3" | "deploy" | "monitor"
+  stage: varchar("stage", { length: 16 }).notNull(),  // "intake" | "triage" | "gate1" | "spec" | "gate2" | "build" | "verify" | "gate3" | "deploy" | "monitor" | "learn"
   status: varchar("status", { length: 16 }).notNull(),  // "entered" | "running" | "passed" | "failed" | "blocked"
 
   // Work item tracking
+  workItemId: varchar("work_item_id", { length: 64 }).notNull(),  // stable from intake onward, e.g. "hts#412"
   signalId: varchar("signal_id", { length: 32 }),  // source reference
   rmNumber: varchar("rm_number", { length: 8 }),  // RM-XXXX
   prNumber: integer("pr_number"),
@@ -302,7 +329,6 @@ export const factoryEvents = pgTable("factory_events", {
 
   // Financial tracking
   llmCostUsd: doublePrecision("llm_cost_usd"),  // cost for this stage
-  totalCostUsd: doublePrecision("total_cost_usd"),  // cumulative for this RM
 
   // Error tracking
   error: text("error"),
@@ -439,78 +465,13 @@ Same pattern as HTS Watchdog Bot — events that trigger alerts:
 
 ## 4. Build Plan
 
-### Phase 1 — Foundation (Week 1)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 1.1 | Create `factory_events` table (Drizzle migration) | 1h | None | Metrics schema in Postgres |
-| 2.1 | Install Matt Pocock skills (`claude plugin install`) | 10min | None | /grill-me, /to-spec, /to-tickets, /tdd, /code-review |
-| 3.1 | Install Poteto Mode (`npx skills add potetos-for-everyone`) | 10min | None | Playbook routing, Overnight Mode |
-| 4.1 | Create `FactoryMetricsCollector` (borrow HTS collector pattern) | 2h | 1.1 | Metrics emitted per stage event |
-| 5.1 | Add factory health endpoints `/api/health.factory.*` | 3h | 1.1 | Live factory status visible |
-
-**Phase 1 Gate:** Factory metrics visible on dashboard, skills installed, baseline captured.
-
-### Phase 2 — Intake Automation (Week 1-2)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 2.1 | Wire social intake → factory triage queue | 2h | 1.2, 4.1 | Social links auto-enter intake |
-| 2.2 | Fast Council (Chair-only) for triage verdicts | 3h | 2.1 | Signals get RM or reject within 2 min |
-| 2.3 | `/to-spec` + `/to-tickets` pipeline from triaged signal | 2h | 2.2 | Spec + tickets auto-generated |
-| 2.4 | RM minting automation (grep → mint → roadmap.yaml) | 2h | 2.3 | RM auto-minted from ticket |
-
-**Phase 2 Gate:** Signal → RM minted in under 5 min, fully automated.
-
-### Phase 3 — Build Floor (Week 2-3)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 3.1 | Generate Claude Code workflow from spec + tickets | 4h | 2.3, 2.4 | Ultracode workflow auto-generated |
-| 3.2 | Wire Poteto Mode playbook routing per sub-task | 3h | 3.1 | Bug/feature/refactor auto-routed |
-| 3.3 | Convergence merge → PR with verification checks | 3h | 3.2 | One PR per spec with verified sub-tasks |
-| 3.4 | Matt Pocock /code-review wired as verify stage | 1h | 3.3 | Dual-axis review auto-triggered |
-
-**Phase 3 Gate:** Signal → PR in one autonomous run (build floor completes without human intervention).
-
-### Phase 4 — Verification & Security (Week 3-4)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 4.1 | Independent test agent (writes tests from spec only) | 4h | 3.3 | Structural separation: tester ≠ implementer |
-| 4.2 | Trail of Bits security skills installed + wired | 1h | 4.1 | Vulnerable deps caught |
-| 4.3 | Credential injection gateway (envoy sidecar pattern) | 4h | 4.2 | Secrets never in agent sandbox |
-| 4.4 | Budget ceilings per run (USD, tokens, time, loops) | 2h | 4.3 | Run killed if exceeds budget |
-
-**Phase 4 Gate:** Full verification pipeline with security gates and structural agent separation.
-
-### Phase 5 — Deployment Gates (Week 4-5)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 5.1 | Risk classifier for PRs (low/medium/high) | 2h | 4.1 | Auto-classify PR risk tier |
-| 5.2 | Low-risk auto-merge + deploy pipeline | 3h | 5.1 | Docs/config deploy without human |
-| 5.3 | Medium-risk Fast Council gate | 2h | 5.2 | Chair rules on deploy in < 2 min |
-| 5.4 | High-risk Full Council gate | 2h | 5.3 | 4-model debate on critical changes |
-
-**Phase 5 Gate:** PR → Deploy with appropriate human involvement per risk level.
-
-### Phase 6 — Feedback Loop (Week 5-6)
-
-| # | Task | Effort | Depends On | Outcome |
-|---|---|---|---|---|
-| 6.1 | Kaizen auto-report from factory_events | 3h | 1.1 | Weekly report auto-generated |
-| 6.2 | Failure classification pipeline | 3h | 6.1 | Build failures classified (test/spec/agent) |
-| 6.3 | Cost analytics dashboard (per RM, per stage, per model) | 4h | 1.1, 6.2 | Financial transparency |
-| 6.4 | Council auto-intake from Kaizen | 2h | 6.2, 5.4 | New RM items from failures |
-
-**Phase 6 Gate:** Factory self-improves without human intervention.
+Moved to [build-plan.md](build-plan.md). It replaces the earlier six-phase tables with a walking-skeleton sequence, unique task IDs, and a measurable exit criterion per step.
 
 ---
 
 ## 5. Skills & Tools Inventory
 
-### Installed Now
+### Status
 
 | Tool | Installed | Use |
 |---|---|---|
@@ -521,7 +482,9 @@ Same pattern as HTS Watchdog Bot — events that trigger alerts:
 | Humanizer (blader/humanizer) | ✅ | Startup stack |
 | Frontend Design (Anthropic) | ✅ | Startup stack |
 
-| New Installations Needed
+### Installations needed
+
+These commands are unverified. Check each tool's own README for the current install command before running it.
 
 ```bash
 # Phase 1 — install these first
@@ -535,8 +498,8 @@ npx @google/modern-web-guidance setup   # Chrome MWG skills (~205 tokens)
 npm install -g ctx7                      # Context7 CLI + MCP server
 ctx7 setup                               # adds rules and skills to Claude Code
 
-# Phase 2 — setup per repo
-cd ~/hyper-trading-system && /setup-matt-pocock-skills  # once per repo
+# Setup per project repo
+cd <project-repo> && /setup-matt-pocock-skills  # once per repo
 
 # Add Baseline target to CLAUDE.md / AGENTS.md
 echo "# This project's Baseline target is Baseline 2024." >> CLAUDE.md
@@ -549,7 +512,7 @@ echo "# Follow Modern Web Guidance for all web platform features." >> CLAUDE.md
 
 ### HTS Borrows
 
-The factory reuses these HTS patterns directly:
+This section is specific to the HTS deployment. The factory reuses these HTS patterns, which live in the HTS repo:
 
 | HTS Pattern | Factory Equivalent |
 |---|---|
@@ -565,36 +528,22 @@ The factory reuses these HTS patterns directly:
 
 ### Hard Constraints
 
-1. **JEV stays shadow-only** — no gating until calibration holds
-2. **Council verdicts are advisory** — you may override with documented mitigation
-3. **No live capital changes** from autonomous factory — deploy gates block high-risk to you
-4. **Max 3 review-fix loops** — prevents infinite agent cycles
-5. **All secrets stay outside sandbox** — credential injection pattern only
-6. **Evidence-based verification** — every PASS must include evidence. A bare "PASS" is treated as INCONCLUSIVE.
-7. **Anti-slop gate** — any PR that increases complexity delta > 0.5 is blocked for architecture review. No exceptions.
-8. **No unreviewed output** — every PR is reviewed by at least one independent verifier before merge.
+Generic (every project):
+
+1. **No unreviewed output** — every PR is reviewed by at least one independent verifier before merge.
+2. **Evidence-based verification** — every PASS must include evidence. A bare "PASS" is treated as INCONCLUSIVE.
+3. **Anti-slop gate** — complexity delta > 0.5 (Section 2.4) blocks the PR for architecture review.
+4. **Max 3 review-fix loops** — prevents infinite agent cycles.
+5. **All secrets stay outside the sandbox** — credential injection pattern only.
+6. **Council verdicts are advisory to the operator** — the operator may override with a documented mitigation. A Council can never approve a HIGH-risk change on its own.
+
+HTS only:
+
+7. **JEV stays shadow-only** — no gating until calibration holds.
+8. **No live capital changes** from the autonomous factory — deploy gates route these to the operator.
 
 ---
 
 ## 7. Next Steps
 
-### Immediate (Phase 1 today)
-
-1. ✅ Design documented (this file)
-2. ❌ Install Matt Pocock skills
-3. ❌ Install Poteto Mode
-4. ❌ Create `factory_events` table
-5. ❌ Build `FactoryMetricsCollector`
-
-### This week
-
-- Build Phase 1: foundation + observability
-- Wire intake automation
-- First end-to-end test: link → triage → spec → RM
-- Run one small RM through full pipeline manually
-
-### Next sprint
-
-- Phase 2-3: Build floor + parallel agents
-- Install Overnight Mode
-- First autonomous build session
+See the [build plan](build-plan.md). The walking skeleton exists; Step 1 is making it reliable over ten real jobs.
