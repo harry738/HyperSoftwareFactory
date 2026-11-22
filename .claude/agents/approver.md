@@ -61,15 +61,13 @@ In this project a human must also always see a change that:
   every criterion in `issue.md` with `spec.md` and `intake.md`'s Scope; a
   criterion turned into a follow-up counts as dropped. Say which one in For the
   human;
-- touches money, rules, the AI gateway or the audit trail: `src/lib/ledger.ts`, `src/lib/money.ts`,
-  `src/lib/regulatory.ts`, `src/lib/deadlines.ts`, `src/lib/gateway.ts`, `src/lib/redaction.ts`,
-  `src/lib/live.ts`, `src/lib/preview.ts`, `src/lib/safetyNet.ts`, `src/lib/audit.ts`, or the
-  approval rules in `src/lib/cases.ts` (after the monorepo move: `packages/rules`, `packages/ledger`,
-  `packages/ai-gateway`);
+- touches a file matching `sensitive_paths` in `factory/config.json`: the
+  project's list of files where a mistake costs most. Dependency manifests and
+  lockfiles are on it by default;
 - changes the factory or agent set-up: anything under `.claude/` or `factory/`;
-- changes `package.json` or `package-lock.json`;
-- removes or weakens a test, or removes the "Fictional organisation – demo only" label from a screen;
-- sends member data to a model outside the AI gateway.
+- removes or weakens a test;
+- breaks, or comes close to, a rule that `AGENTS.md` (or `CLAUDE.md`) says a
+  person must always see. Read it before you decide.
 
 ## Write decision.md
 

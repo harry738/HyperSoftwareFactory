@@ -65,7 +65,9 @@ Run `<main checkout>/factory/bin/gate --checks` from the worktree
 (`cd <worktree> && <main checkout>/factory/bin/gate --checks`). It runs
 `factory/checks.sh` and must pass: the gate runs exactly this after you finish,
 and reviewers only start once it passes. Run it in the foreground and wait for
-it; it waits for any other run in your worktree to finish first.
+it, never with `run_in_background` and never twice at once: a run you leave
+behind holds the worktree's lock and the gate waits for it. Your Stop hook skips
+its own run when your last run passed on the commit you finish on.
 
 Then verify every acceptance criterion and record the evidence in build.md: the
 command you ran and its result, or what the page showed.

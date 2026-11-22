@@ -63,6 +63,10 @@ VERDICT: PASS | CHANGES
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
 
+## Evidence
+- <path:line>: what you checked there
+- ... one line per file you read in the diff, and the page and width for anything you looked at
+
 ## Findings
 1. <path:line> <the problem and the fix you want>
 
@@ -77,5 +81,8 @@ Non-blocking observations. Optional.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
   skim on the dashboard. The detail goes in the sections below it.
 - Under Findings, write "None." when there are none.
+- `## Evidence` is required with PASS and CHANGES: list each changed file you
+  read, with at least one `path:line`. The factory refuses a review without it
+  and sends it back to you. A review that only read the diff stat isn't a review.
 
 When you're done, reply with one line: the first line of review-code.md.

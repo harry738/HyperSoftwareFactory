@@ -128,7 +128,10 @@ gate's `round-<N-1>/checks.md`, the reviews in `round-<N-1>/`, or
   `The gate failed: read round-<N-1>/checks.md and checks.log, fix it, push, and update build.md.`
   No reviewer runs on a failing build.
 
-**review.** Spawn every reviewer in `job.json` `agents.reviewers` **in one
+**review.** `advance <id> review` may have added reviewers: when the branch changes a
+`sensitive_paths` file it adds the security reviewer and raises the code reviewer
+(`sensitive_reviewers` in `config.json`). Read the list from `job.json` after it.
+Spawn every reviewer in `job.json` `agents.reviewers` **in one
 message**, so they run in parallel: `subagent_type` `reviewer-<r>`, model from
 the same map, prompt `<header> Review round <N>.` plus the port for `ux` and
 `ui`. **WAIT FOR ALL.** Each time one finishes, run
@@ -136,6 +139,8 @@ the same map, prompt `<header> Review round <N>.` plus the port for `ux` and
 finished:
 
 - any BLOCKED (a reviewer couldn't open the page): `factory/bin/job advance <id> needs-human`.
+- `advance` refuses a review with no `## Evidence` citing a `path:line`: resume
+  that reviewer once with the refusal. If it refuses again, stop this job and tell the user.
 
 - all PASS: `factory/bin/job advance <id> approve`, then spawn `approver` with
   `<header> PR: #<pr>. Final round: <N>.`

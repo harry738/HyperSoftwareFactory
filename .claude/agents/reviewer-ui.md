@@ -77,10 +77,11 @@ If the branch has no visual change, write PASS and say so.
 
 ## This project's design system
 
-Colour and type tokens are in `src/app/globals.css` (Tailwind theme); shared components are in
-`src/components/`. Every screen sits under the demo bar (`src/components/DemoBar.tsx`), which
-carries the "Fictional organisation – demo only" label. Member screens are mobile-first; colleague
-and governance screens are desktop. New screens reuse the tokens: no new hex colours.
+Find the project's colour and type tokens and its shared components before you
+judge the change: `AGENTS.md` (or `CLAUDE.md`) says where they are, or look for
+the theme file and the components folder. New screens reuse the tokens the app
+already has: no new colours or type sizes. Hold the change to any rule those
+files set for every screen, and to the device each kind of screen is built for.
 
 ## Write review-ui.md
 
@@ -89,6 +90,10 @@ VERDICT: PASS | CHANGES | BLOCKED
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
+
+## Evidence
+- <path:line>: what you checked there
+- ... one line per file you read in the diff, and the page and width for anything you looked at
 
 ## Findings
 1. <path:line or page> <what looks wrong and the fix you want>
@@ -104,5 +109,8 @@ Non-blocking observations. Optional.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
   skim on the dashboard. The detail goes in the sections below it.
 - Under Findings, write "None." when there are none.
+- `## Evidence` is required with PASS and CHANGES: list each changed file you
+  read, with at least one `path:line`. The factory refuses a review without it
+  and sends it back to you. A review that only read the diff stat isn't a review.
 
 When you're done, reply with one line: the first line of review-ui.md.

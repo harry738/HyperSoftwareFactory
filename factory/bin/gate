@@ -66,15 +66,42 @@ def bash():  # binley: outside Git Bash, "bash" on PATH is WSL, which can't read
     return shutil.which("bash") or "bash"
 
 
+def git_dir(worktree):
+    return Path(git(worktree, "rev-parse", "--absolute-git-dir").strip())
+
+
+def clean_head(worktree):
+    """HEAD's commit when the tree has no uncommitted changes, else None."""
+    if git(worktree, "status", "--porcelain").strip():
+        return None
+    return git(worktree, "rev-parse", "HEAD").strip()
+
+
 def run_checks(worktree, capture=True):
+    """Returns (exit code, log, seconds running, seconds waiting for the lock)."""
     # binley: one checks.sh at a time per worktree, so the builder's run and its
     # Stop hook's run never install node_modules at once. The lock waits.
-    lock_path = Path(git(worktree, "rev-parse", "--absolute-git-dir").strip()) / "factory-checks.lock"
-    with open(lock_path, "w") as f:
+    marker = git_dir(worktree) / "factory-checks-passed"
+    asked = time.monotonic()
+    with open(git_dir(worktree) / "factory-checks.lock", "w") as f:
         proc.lock(f)
         start = time.monotonic()
+        head = clean_head(worktree)
         res = subprocess.run([bash(), CHECKS.as_posix()], cwd=worktree, capture_output=capture, text=True)
-    return res.returncode, (res.stdout or "") + (res.stderr or ""), int(time.monotonic() - start)
+        # binley: remember a clean pass, so the Stop hook needn't run the same checks again
+        if res.returncode == 0 and head and clean_head(worktree) == head:
+            marker.write_text(head)
+        else:
+            marker.unlink(missing_ok=True)
+    end = time.monotonic()
+    return res.returncode, (res.stdout or "") + (res.stderr or ""), int(end - start), int(start - asked)
+
+
+def passed_on_head(worktree):
+    """True when the last checks run in this worktree passed on the current, clean HEAD."""
+    marker = git_dir(worktree) / "factory-checks-passed"
+    head = clean_head(worktree)
+    return bool(head) and marker.exists() and marker.read_text().strip() == head
 
 
 def gate(job_id, merge):
@@ -85,13 +112,14 @@ def gate(job_id, merge):
     round_dir = FACTORY / "jobs" / job_id / f"round-{job['round']}"
     commit = git(worktree, "rev-parse", "HEAD").strip()
     protected = protected_changes(worktree)
-    code, log, seconds = run_checks(worktree)
+    code, log, seconds, waited = run_checks(worktree)  # the gate always runs the checks itself
     verdict = "PASS" if code == 0 and not protected else "FAIL"
     name = "merge-checks" if merge else "checks"
     (round_dir / f"{name}.log").write_text(log)
     tail = "\n".join(log.rstrip().splitlines()[-TAIL:])
     summary = [
-        f"checks.sh {'passed' if code == 0 else f'failed with exit {code}'} in {seconds}s",
+        f"checks.sh {'passed' if code == 0 else f'failed with exit {code}'} in {seconds}s"
+        + (f", after waiting {waited}s for another checks run in this worktree" if waited > 5 else ""),
         f"Protected paths: {'changed: ' + ', '.join(protected) if protected else 'none changed'}",
         f"Commit {commit[:7]}" + (", synced with the latest main before merging" if merge else ""),
     ]
@@ -116,7 +144,9 @@ def hook():
     prompt = content if isinstance(content, str) else " ".join(b.get("text", "") for b in content)
     job_id = prompt.split("Job: ", 1)[1].split(".", 1)[0]
     job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
-    code, log, _ = run_checks(job["worktree"])
+    if passed_on_head(job["worktree"]):
+        sys.exit(0)  # binley: the builder's own run already passed on this commit
+    code, log, _, _ = run_checks(job["worktree"])
     if code != 0:
         tail = "\n".join(log.rstrip().splitlines()[-40:])
         print(f"factory/checks.sh fails in your worktree (exit {code}). The gate will reject this "

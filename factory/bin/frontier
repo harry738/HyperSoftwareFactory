@@ -18,8 +18,8 @@ import proc  # Windows process helpers, factory/bin/proc.py
 proc.setup()
 
 REPO = Path(__file__).resolve().parents[2]
-QUEUE = json.loads((REPO / "factory" / "config.json").read_text())["labels"]["queue"]
-READY = "ready-for-agent"
+LABELS = json.loads((REPO / "factory" / "config.json").read_text())["labels"]
+QUEUE, READY = LABELS["queue"], LABELS["ready"]
 
 
 def gh(*args):

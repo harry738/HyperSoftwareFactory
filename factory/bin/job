@@ -21,9 +21,11 @@ Usage:
 <job> is a job id (004-dark-mode) or an issue number (12).
 """
 
+import fnmatch
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -175,6 +177,12 @@ def section(path, heading):
     """Body of a `## heading` section, or None."""
     m = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", path.read_text(), re.M | re.S)
     return m.group(1).strip() if m else None
+
+
+def sensitive_changes(job):
+    """Files the branch changes that match config.json `sensitive_paths` (fnmatch, `*` crosses `/`)."""
+    names = git(job, "diff", "--name-only", f"origin/{BASE}...HEAD").stdout.split()
+    return [n for n in names if any(fnmatch.fnmatch(n, p) for p in CONFIG["sensitive_paths"])]
 
 
 def round_dir(job, n=None):
@@ -335,7 +343,10 @@ def sync(job):
             for r in reviewers(job):
                 line = first_line(rd / f"review-{r}.md")
                 m = re.fullmatch(r"VERDICT:\s*(PASS|CHANGES|BLOCKED)", line or "")
-                job["reviews"][r] = m.group(1) if m else ("pending" if line is None else "invalid")
+                verdict = m.group(1) if m else ("pending" if line is None else "invalid")
+                if verdict in {"PASS", "CHANGES"} and not has_evidence(rd / f"review-{r}.md"):
+                    verdict = "no-evidence"  # binley: a review that cites nothing wasn't done
+                job["reviews"][r] = verdict
     job["cost_usd"] = cost_usd(job)
     return job
 
@@ -361,11 +372,23 @@ def pr_state(job):
     return gh_json("pr", "view", str(job["pr"]), "--json", "state")["state"]
 
 
+EVIDENCE = re.compile(r"[\w./-]+\.\w+:\d+")
+
+
+def has_evidence(path):
+    """binley: an `## Evidence` section citing at least one path:line."""
+    return bool(EVIDENCE.search(section(path, "Evidence") or ""))
+
+
 def check_reviews_done(job):
     rd = round_dir(job)
     missing = [r for r in reviewers(job) if not (rd / f"review-{r}.md").exists()]
     require(not missing, f"round {job['round']} is missing reviews from: {', '.join(missing)}")
-    bad = [r for r, v in job["reviews"].items() if v not in {"PASS", "CHANGES", "BLOCKED"}]
+    blocked = "BLOCKED" in job["reviews"].values()  # a blocked job goes to a human anyway
+    thin = [] if blocked else [r for r, v in job["reviews"].items() if v == "no-evidence"]
+    require(not thin, f"review-{thin[0]}.md has no `## Evidence` section citing a path:line; "
+                      "resume that reviewer and ask for one" if thin else "")
+    bad = [r for r, v in job["reviews"].items() if v not in {"PASS", "CHANGES", "BLOCKED", "no-evidence"}]
     require(not bad, f"first line isn't a verdict in review-{bad[0]}.md" if bad else "")
 
 
@@ -394,7 +417,8 @@ def advance(job, stage):
         reason = (d / "rejection.md").read_text().split("\n", 1)[1].strip()
         comment("issue", job["issue"], f"### Factory: rejected\n\n{reason}")
         waiting = LABELS["needs_info"] if old == "needs-info" else LABELS["needs_human"]
-        label("issue", job["issue"], remove=f"{LABELS['queue']},{waiting}")
+        # binley: also ready-for-agent, or frontier labels the issue factory again
+        label("issue", job["issue"], remove=f"{LABELS['queue']},{waiting},{LABELS['ready']}")
         if job["pr"]:
             gh("pr", "close", str(job["pr"]))
             run(["git", "push", "origin", "--delete", job["branch"]], check=False)
@@ -411,7 +435,7 @@ def advance(job, stage):
         if stage == "needs-info":
             label("issue", job["issue"], add=LABELS["needs_info"])
         elif stage == "rejected":
-            label("issue", job["issue"], remove=LABELS["queue"])
+            label("issue", job["issue"], remove=f"{LABELS['queue']},{LABELS['ready']}")  # binley: see above
         else:
             run(["git", "fetch", "origin", BASE])
             if not Path(job["worktree"]).exists():  # binley: a re-run may find it made
@@ -459,6 +483,11 @@ def advance(job, stage):
                 "checks.md was written for another commit; run the gate again")
         if stage == "review":
             require(h.get("GATE") == "PASS", "the gate didn't pass")
+            touched = sensitive_changes(job)
+            if touched:  # binley: risk by path, whatever intake rated it
+                job["agents"]["reviewers"].update(CONFIG["sensitive_reviewers"])
+                print(f"{job['id']}: sensitive paths changed ({', '.join(touched)}): reviewers "
+                      + ", ".join(f"{k} {v}" for k, v in job["agents"]["reviewers"].items()))
             job["reviews"] = {r: "pending" for r in reviewers(job)}
         else:
             require(h.get("GATE") == "FAIL", "the gate passed")
@@ -521,13 +550,29 @@ def advance(job, stage):
     if stage == "review":
         start_dev_server(job)
 
-    if stage in TERMINAL and Path(job["worktree"]).exists():
-        run(["git", "worktree", "remove", "--force", job["worktree"]])
-        run(["git", "branch", "-D", job["branch"]], check=False)
+    if stage in TERMINAL:
+        remove_worktree(job)
 
     job["stage"] = stage
     job["ended"] = now() if stage in TERMINAL | WAITING else None
     return job
+
+
+def remove_worktree(job):
+    """Delete a finished job's worktree and branch. binley: safe to repeat, and
+    never fails the transition: on Windows a file another process still holds
+    can stop the delete half-way, which left git's record gone and the folder
+    there, and every later `job queue` failed on it."""
+    path = Path(job["worktree"])
+    for offset in (0, 1):  # a dev server still running there holds files open
+        proc.stop_port(port(job, offset))
+    run(["git", "worktree", "remove", "--force", str(path)], check=False)
+    if path.exists():
+        shutil.rmtree(path, ignore_errors=True)
+    run(["git", "worktree", "prune"], check=False)
+    run(["git", "branch", "-D", job["branch"]], check=False)
+    if path.exists():
+        print(f"job: warning: couldn't delete {path}; delete it by hand", file=sys.stderr)
 
 
 # ---- Review dev server ------------------------------------------------------
@@ -609,7 +654,10 @@ def cmd_queue():
     # A job is done once its PR is merged on GitHub, which also closes the issue.
     for j in jobs.values():
         if j["stage"] not in TERMINAL and j["pr"] and pr_state(j) == "MERGED":
-            save(advance(sync(j), "merged"))
+            try:
+                save(advance(sync(j), "merged"))
+            except Refused as e:  # binley: one stuck job mustn't stop the queue
+                print(f"job: warning: {j['id']} stays {j['stage']}: {e}", file=sys.stderr)
     issues = gh_json("issue", "list", "--label", LABELS["queue"], "--state", "open",
                      "--limit", "200", "--json", "number,title")
     open_numbers = {i["number"] for i in issues}
@@ -678,13 +726,39 @@ def cmd_merge(job):
         git(job, "push", "origin", job["branch"])
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
-        gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}")
+        ci_failure = wait_for_ci(job)
+        if ci_failure:
+            return fail(ci_failure)
+        merge_when_allowed(job)
     except Refused as e:
         return fail(f"The merge failed:\n\n```\n{e}\n```")
     # GitHub may already have deleted the branch on merge.
     run(["git", "push", "origin", "--delete", job["branch"]], check=False)
     save(advance(sync(job), "merged"))
     print(f"{job['id']}: merged PR #{job['pr']}")
+
+
+def wait_for_ci(job, settle=20):
+    """binley: main's ruleset requires CI, so wait for the PR's checks after the
+    push. None when they pass or the PR has none, else the reason."""
+    time.sleep(settle)  # let GitHub register the checks for the commit just pushed
+    res = run(["gh", "pr", "checks", str(job["pr"]), "--watch", "--fail-fast", "--interval", "20"], check=False)
+    out = (res.stdout + res.stderr).strip()
+    if res.returncode == 0 or "no checks reported" in out:
+        return None
+    return f"CI didn't pass on PR #{job['pr']}:\n\n```\n{out[-3000:]}\n```"
+
+
+def merge_when_allowed(job, tries=10, pause=30):
+    """gh pr merge, retried while GitHub still counts a required check as pending."""
+    for attempt in range(tries):
+        try:
+            gh("pr", "merge", str(job["pr"]), f"--{CONFIG['merge_method']}")
+            return
+        except Refused as e:
+            if attempt == tries - 1 or not re.search(r"status check|required|pending", str(e), re.I):
+                raise
+            time.sleep(pause)
 
 
 def cmd_feedback(job, text):

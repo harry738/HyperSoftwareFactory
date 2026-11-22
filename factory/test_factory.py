@@ -31,6 +31,7 @@ def load_script(name):
 
 job = load_script("job")
 job.JOBS = TMP  # job folders go here, not in factory/jobs
+REAL_RUN = job.run  # tests that fake git replace job.run, then restore this
 
 
 def python(code):
@@ -158,6 +159,178 @@ def test_frontier_releases_only_unblocked_issues():  # P1-08
     frontier.main([])
     assert labelled == [(10, "factory")], labelled
     assert asked == [10, 11], "an issue already labelled factory needs no blocker lookup"
+
+
+def test_rejection_clears_ready_for_agent():  # frontier must not re-release a rejected issue
+    d = TMP / "005-rejected"
+    d.mkdir()
+    (d / "intake.md").write_text("DECISION: REJECT\nRISK: low\nSURFACES: none\nRESCOPED: no\n\n## Summary\n- no\n")
+    edits = []
+
+    def fake_gh(*args):
+        if args[1] == "view":
+            return json.dumps({"comments": []})
+        if args[1] == "edit":
+            edits.append(args)
+        return ""
+
+    job.gh = fake_gh
+    job.run = lambda cmd, cwd=None, check=True: subprocess.CompletedProcess(cmd, 0, "", "")  # no real git
+    j = {"id": "005-rejected", "issue": 5, "stage": "intake", "round": 0, "pr": None, "branch": "factory/005-rejected",
+         "worktree": str(TMP / "wt" / "005-rejected"), "intake": None, "agents": None}
+    assert job.advance(j, "rejected")["stage"] == "rejected"
+    removed = edits[0][edits[0].index("--remove-label") + 1].split(",")
+    assert {"factory", "ready-for-agent"} <= set(removed), removed
+
+
+def test_worktree_cleanup_can_be_repeated():  # the trial-1 leftover that blocked the queue
+    repo = TMP / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+                    "--allow-empty", "-m", "x"], check=True)
+    wt = repo / ".worktrees" / "006-cleanup"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "factory/006-cleanup", str(wt)], check=True)
+    (wt / "big.txt").write_text("x")
+    j = {"id": "006-cleanup", "worktree": str(wt), "branch": "factory/006-cleanup"}
+    job.run = lambda cmd, cwd=None, check=True: REAL_RUN(cmd, cwd=repo, check=check)
+    try:
+        # The half-done state from the trial: git has forgotten the worktree, the folder is still there.
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], capture_output=True)
+        wt.mkdir(parents=True, exist_ok=True)
+        (wt / "leftover.txt").write_text("x")
+        job.remove_worktree(j)
+        job.remove_worktree(j)  # and again: no error
+    finally:
+        job.run = REAL_RUN
+    assert not wt.exists(), "the leftover folder is still there"
+    branches = subprocess.run(["git", "-C", str(repo), "branch", "--list", "factory/*"], capture_output=True, text=True).stdout
+    assert not branches.strip(), branches
+
+
+def test_review_without_evidence_is_refused():  # hardening: no 8-second reviews
+    d = TMP / "007-evidence"
+    (d / "round-1").mkdir(parents=True)
+    review = d / "round-1" / "review-code.md"
+    review.write_text("VERDICT: PASS\n\n## Summary\n- looks fine\n\n## Findings\nNone.\n")
+    j = {"id": "007-evidence", "issue": 7, "stage": "review", "round": 1, "round_limit": 3, "pr": 1,
+         "worktree": str(TMP), "intake": None, "gate": None, "agents": {"reviewers": {"code": "haiku"}}, "reviews": {}}
+    job.cost_usd = lambda j: 0.0
+    assert job.sync(dict(j))["reviews"] == {"code": "no-evidence"}
+    try:
+        job.advance(job.sync(dict(j)), "approve")
+        raise AssertionError("a review with no evidence went to approve")
+    except job.Refused as e:
+        assert "Evidence" in str(e), e
+    review.write_text("VERDICT: PASS\n\n## Summary\n- fine\n\n## Evidence\n- src/lib/payments.ts:65: new pattern\n\n## Findings\nNone.\n")
+    assert job.advance(job.sync(dict(j)), "approve")["stage"] == "approve"
+
+
+def test_sensitive_path_adds_security_review():  # hardening: risk by path, not intake's rating
+    d = TMP / "008-sensitive"
+    (d / "round-1").mkdir(parents=True)
+    (d / "round-1" / "checks.md").write_text("GATE: PASS\nCOMMIT: abc123\n\n## Summary\n- ok\n")
+
+    def fake_run(cmd, cwd=None, check=True):
+        out = {"rev-parse": "abc123\n", "diff": "README.md\nsrc/lib/payments.ts\n"}.get(cmd[1], "")
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+    saved = {k: job.CONFIG.get(k) for k in ("sensitive_paths", "sensitive_reviewers")}
+    job.CONFIG.update(sensitive_paths=["src/lib/payments.ts"], sensitive_reviewers={"code": "sonnet", "security": "opus"})
+    job.run = fake_run
+    try:
+        j = {"id": "008-sensitive", "issue": 8, "stage": "gate", "round": 1, "round_limit": 3, "pr": 1,
+             "worktree": str(TMP), "agents": {"reviewers": {"code": "haiku"}}, "reviews": {}}
+        j = job.advance(j, "review")
+    finally:
+        job.run = REAL_RUN
+        job.CONFIG.update(saved)
+    assert j["agents"]["reviewers"] == {"code": "sonnet", "security": "opus"}, j["agents"]
+    assert set(j["reviews"]) == {"code", "security"}
+
+
+def test_template_sensitive_paths():  # the shipped defaults catch manifests, lockfiles and env files at any depth
+    import fnmatch
+    for path, hit in (("package.json", True), ("apps/web/package.json", True), ("pnpm-lock.yaml", True),
+                      (".env.local", True), ("src/app/page.tsx", False), ("src/lib/clock.ts", False)):
+        assert any(fnmatch.fnmatch(path, p) for p in job.CONFIG["sensitive_paths"]) == hit, path
+
+
+def test_hook_skips_checks_after_a_clean_pass():  # hardening: the Stop hook doesn't repeat a passed run
+    gate = load_script("gate")
+    repo = TMP / "hookrepo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+                    "--allow-empty", "-m", "x"], check=True)
+    assert not gate.passed_on_head(repo)  # no marker yet
+    head = gate.clean_head(repo)
+    (gate.git_dir(repo) / "factory-checks-passed").write_text(head)
+    assert gate.passed_on_head(repo)
+    (repo / "new.txt").write_text("uncommitted")
+    assert not gate.passed_on_head(repo), "a dirty tree must run the checks again"
+    (repo / "new.txt").unlink()
+    (gate.git_dir(repo) / "factory-checks-passed").write_text("0" * 40)
+    assert not gate.passed_on_head(repo), "a pass on another commit doesn't count"
+
+
+def test_merge_waits_for_ci():  # main requires CI, so job merge must wait for it
+    j = {"id": "009-ci", "pr": 9}
+    calls = []
+
+    def fake_run(code, out):
+        def run(cmd, cwd=None, check=True):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, code, out, "")
+        return run
+
+    try:
+        job.run = fake_run(0, "checks\tpass\nsemgrep\tpass\n")
+        assert job.wait_for_ci(j, settle=0) is None
+        assert calls[-1][:4] == ["gh", "pr", "checks", "9"] and "--watch" in calls[-1]
+        job.run = fake_run(1, "checks\tfail\n")
+        assert "CI didn't pass on PR #9" in job.wait_for_ci(j, settle=0)
+        job.run = fake_run(1, "no checks reported on the 'factory/009-ci' branch")
+        assert job.wait_for_ci(j, settle=0) is None  # a repo or branch without CI isn't blocked
+
+        tries = []
+
+        def flaky_gh(*args):
+            tries.append(args)
+            if len(tries) < 3:
+                raise job.Refused("Required status check \"checks\" is expected")
+            return ""
+
+        job.gh = flaky_gh
+        job.merge_when_allowed(j, pause=0)
+        assert len(tries) == 3, "merge should retry while a required check is pending"
+
+        def broken_gh(*args):
+            raise job.Refused("Pull request is not mergeable: conflicts")
+
+        job.gh = broken_gh
+        try:
+            job.merge_when_allowed(j, pause=0)
+            raise AssertionError("a non-CI merge failure must not be retried")
+        except job.Refused:
+            pass
+    finally:
+        job.run = REAL_RUN
+
+
+def test_no_hand_merge_hook():
+    hook = ROOT / ".claude" / "hooks" / "no-hand-merge.py"
+
+    def blocked(command):
+        res = subprocess.run([sys.executable, str(hook)], input=json.dumps({"tool_input": {"command": command}}),
+                             capture_output=True, text=True)
+        return res.returncode == 2
+
+    for command in ("gh pr merge 27 --merge", "gh pr view 27 && gh pr merge 27", "gh  pr   merge 3",
+                    "gh.exe pr merge 3", "python -c \"run(['gh', 'pr', 'merge', '3'])\"",
+                    "gh api -X PUT repos/o/r/pulls/27/merge"):
+        assert blocked(command), command
+    for command in ("factory/bin/job merge 004-x", "gh pr view 27", "git merge --no-edit origin/main",
+                    "gh pr list --search merged"):
+        assert not blocked(command), command
 
 
 def test_one_dev_server_per_review():  # fix 7: one shared server, stopped with its children

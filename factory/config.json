@@ -6,7 +6,8 @@
   "labels": {
     "queue": "factory",
     "needs_info": "factory:needs-info",
-    "needs_human": "factory:needs-human"
+    "needs_human": "factory:needs-human",
+    "ready": "ready-for-agent"
   },
   "routing": {
     "low": {
@@ -34,8 +35,20 @@
     "factory/bin/*",
     "CLAUDE.md",
     "AGENTS.md",
-    ".github/workflows/*"
+    ".github/workflows/*",
+    ".claude/*"
   ],
+  "sensitive_paths": [
+    "*package.json",
+    "*package-lock.json",
+    "*pnpm-lock.yaml",
+    "*yarn.lock",
+    "*.env*"
+  ],
+  "sensitive_reviewers": {
+    "code": "sonnet",
+    "security": "opus"
+  },
   "ports": {
     "base": 5100,
     "step": 10
