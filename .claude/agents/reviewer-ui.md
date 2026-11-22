@@ -100,6 +100,7 @@ Non-blocking observations. Optional.
 
 - The first line must be exactly `VERDICT: PASS`, `VERDICT: CHANGES` or
   `VERDICT: BLOCKED`.
+- The second line must be `COMMIT: <full SHA>` from `git rev-parse HEAD` in the actual worktree.
 - Use CHANGES only for visible inconsistencies or breakage. Put matters of
   taste under Notes.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
