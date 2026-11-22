@@ -40,6 +40,18 @@ SIGNALS ─▶ INTAKE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─▶ DEPLOY ─�
 | [`reference/`](reference/) | Full architecture docs, integrations (Context7, Modern Web Guidance) |
 | [`config/`](config/) | Central project registry (`projects.yaml`) |
 | [`scripts/`](scripts/) | Onboarding wizard |
+| [`factory/`](factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, live `dashboard.html` |
+| [`.claude/agents/`](.claude/agents/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver |
+| [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
+| [`reference/binley/`](reference/binley/) | First real use: pilot report, bootstrap prompt, how to run it on Windows |
+
+## The working factory (L3, in use)
+
+`factory/` and `.claude/` are the factory as it runs today on the Binley Building Society demonstrator (a fictional reference case). `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
+
+- **Install into a project:** copy `factory/` and `.claude/` into the target repo, then edit `factory/checks.sh`, `factory/config.json` (protected paths, models, prices) and the project paragraph in `.claude/agents/intake.md`. The copies here carry Binley's values as the worked example.
+- **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
+- **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
 
 ## How It Works
 
@@ -128,4 +140,4 @@ python3 scripts/factory-onboard.py --interactive
 
 Designed for agentic software development. Sources: Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), Dexter Horthy — State of Software Factories (Agentic AI Foundation, 2026), Google Antigravity patterns, arXiv meta-engineering harness.
 
-**License:** MIT
+**License:** MIT, except `factory/`, `.claude/agents/` and `.claude/skills/factory/`, which are GPLv3 (see [`factory/LICENSE`](factory/LICENSE); from zazencodes-season-3 `src/software-factory-claude-code-v2`, with local patches). Vendored skills keep their own MIT licences in `.claude/skills/`.

@@ -1,0 +1,4 @@
+# software factory runtime state
+/factory/jobs/
+/.worktrees/
+__pycache__/

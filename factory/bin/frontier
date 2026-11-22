@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+"""Release the next tickets to the factory (plan P1-08).
+
+Usage: frontier
+
+Adds the `factory` label to every open issue labeled `ready-for-agent` that
+doesn't have it yet and whose blockers (GitHub issue dependencies, blocked_by)
+are all closed. Prints each issue it released. binley: not upstream.
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import proc  # Windows process helpers, factory/bin/proc.py
+
+proc.setup()
+
+REPO = Path(__file__).resolve().parents[2]
+QUEUE = json.loads((REPO / "factory" / "config.json").read_text())["labels"]["queue"]
+READY = "ready-for-agent"
+
+
+def gh(*args):
+    res = subprocess.run(["gh", *args], cwd=REPO, capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.exit(f"frontier: `gh {' '.join(args)}` failed: {res.stderr.strip()}")
+    return res.stdout
+
+
+def main(argv):
+    if argv:
+        sys.exit(__doc__.strip())
+    issues = json.loads(gh("issue", "list", "--label", READY, "--state", "open", "--limit", "500",
+                           "--json", "number,title,labels"))
+    released = 0
+    for issue in sorted(issues, key=lambda i: i["number"]):
+        n = issue["number"]
+        if QUEUE in {label["name"] for label in issue["labels"]}:
+            continue
+        open_blockers = gh("api", "--paginate", f"repos/{{owner}}/{{repo}}/issues/{n}/dependencies/blocked_by",
+                           "--jq", '.[] | select(.state == "open") | .number').split()
+        if open_blockers:
+            continue
+        gh("issue", "edit", str(n), "--add-label", QUEUE)
+        print(f"released #{n} {issue['title']}")
+        released += 1
+    print(f"frontier: released {released} ({len(issues)} open {READY} issues)")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
