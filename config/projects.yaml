@@ -1,24 +1,14 @@
-# Software Factory — Project Configuration
-# Add projects with `python3 scripts/factory-onboard.py --interactive`
-# Or edit this file directly.
+# Software Factory — project registry (example)
+# This file is tracked in a public repo, so it holds placeholders only.
+# Real projects, private repo names and local paths go in config/projects.local.yaml, which is not tracked.
 
 projects:
-  hts:
-    name: "Hyper Trading System"
-    repo: "harry738/hyper-trading-system"
+  project-a:
+    name: "Project A"
+    repo: "<owner>/project-a"
     roadmap: "docs/product/roadmap.yaml"
     inbox: "docs/product/roadmap-inbox/"
     council_enabled: true
     sprint_cadence: weekly
     alert_channel: "telegram:[YOUR_TELEGRAM_CHAT_ID]"
-    onboarded: "2026-11-19"
-
-  hyperos:
-    name: "HyperAISystemsOS"
-    repo: "harry738/HyperAISystemsOS"
-    roadmap: "docs/roadmap.yaml"
-    inbox: "docs/roadmap-inbox/"
-    council_enabled: true
-    sprint_cadence: monthly
-    alert_channel: "telegram:[YOUR_TELEGRAM_CHAT_ID]"
-    onboarded: "2026-11-19"
+    onboarded: "2026-01-01"

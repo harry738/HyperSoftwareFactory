@@ -12,7 +12,7 @@ Each job works in its own git worktree, a full checkout of the repo at
 `.worktrees/<job-id>` (gitignored). A tool run from the repo root that doesn't
 read `.gitignore` sees those copies too; exclude `.worktrees/` in its config.
 
-Run the factory from its own clone (`E:\Documents\Claude\Projects\Binley-factory`),
+Run the factory from its own clone (`<factory clone>`),
 not from an app worktree: a worktree session can't load the factory's agents.
 Every clone the factory runs in needs git to sign in through the `gh` CLI,
 because the scripts make git fail instead of opening a sign-in dialog. Once

@@ -9,14 +9,14 @@
 
 ```
 harry738/HyperSoftwareFactory  ← Factory platform (config, scripts, reference)
-harry738/hyper-trading-system  ← Project A
-harry738/HyperAISystemsOS      ← Project B
-harry738/propInfo.co.uk        ← Project C (future)
+<owner>/project-a             ← Project A
+<owner>/project-b             ← Project B
+<owner>/project-c             ← Project C (future)
 ```
 
 The factory lives in **HyperSoftwareFactory**, this repo. The target is to manage all projects through a single config file.
 
-**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. Whether the registry drives installs or is dropped is decided when the second project is onboarded (build plan S6.1).
+**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. The build plan (v6) replaces this with a central factory whose real registry lives in a private home; see its operating model.
 
 ## Config
 
@@ -24,9 +24,9 @@ The factory lives in **HyperSoftwareFactory**, this repo. The target is to manag
 
 ```yaml
 projects:
-  hts:
-    name: "Hyper Trading System"
-    repo: "harry738/hyper-trading-system"
+  project-a:
+    name: "Project A"
+    repo: "<owner>/project-a"
     roadmap: "docs/product/roadmap.yaml"
     inbox: "docs/product/roadmap-inbox/"
     council_enabled: true   # true = Full Council at gates 2/3; false = Chair-only Fast Council
@@ -34,12 +34,12 @@ projects:
     alert_channel: "telegram:[YOUR_TELEGRAM_CHAT_ID]"
 ```
 
-Planned fields, added in build plan Step 5: `risk_paths`, `deploy`, `budget`, `baseline_target`.
+Planned fields, added later in the build plan: `risk_paths`, `deploy`, `budget`, `baseline_target`.
 
 ## How signals are routed
 
 ```
-Signal arrives → triage → tagged with project slug ("hts", "propinfo")
+Signal arrives → triage → tagged with project slug ("project-a", "project-c")
                          │
                     ┌────▼────┐
                     │  CONFIG  │
@@ -60,9 +60,9 @@ The planned factory dashboard shows all projects in one view:
 ```
   PROJECT       | INTAKE | BUILD | VERIFY | DEPLOY | COST TODAY
   ──────────────┼────────┼───────┼────────┼────────┼───────────
-  hts           │   0    │   2   │   1    │   0    │  $14.23
-  hyperos       │   1    │   0   │   0    │   0    │   $1.20
-  propinfo      │   0    │   0   │   0    │   0    │   $0.00
+  project-a     │   0    │   2   │   1    │   0    │  $14.23
+  project-b     │   1    │   0   │   0    │   0    │   $1.20
+  project-c     │   0    │   0   │   0    │   0    │   $0.00
 ```
 
 ## Onboarding a new project
@@ -73,8 +73,8 @@ python scripts/factory-onboard.py --interactive
 
 # Or CLI mode
 python scripts/factory-onboard.py \
-  --name propinfo \
-  --repo harry738/propInfo.co.uk \
+  --name project-c \
+  --repo <owner>/project-c \
   --council fast \
   --cadence weekly
 ```

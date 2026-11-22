@@ -1,6 +1,6 @@
 # Factory bootstrap prompt (plan P1-07 and P1-08)
 
-Paste everything under the line into a new chat opened on the main project folder (`E:\Documents\Claude\Projects\BinleyBuildingSociety`). This is the one hands-on session. After it, work flows through the factory (plan §6A, "Autopilot").
+Paste everything under the line into a new chat opened on the main project folder (`<project folder>`). This is the one hands-on session. After it, work flows through the factory (plan §6A, "Autopilot").
 
 ---
 
@@ -9,11 +9,11 @@ Install the software factory on `main` so it can build this repo's tickets witho
 ## Read first
 - `docs/plans/2026-11-21-ai-first-programme.md`: section 6 (factory operating model) and section 6A (build model, "Pilot result", "Autopilot").
 - `CLAUDE.md` and `GLOSSARY.md`.
-- The pilot report: `E:\Documents\Claude\Projects\Binley-factory\PILOT-REPORT.md`.
-- The factory's own skill: `E:\Documents\Claude\Projects\Binley-factory\.claude\skills\factory\SKILL.md`.
+- The pilot report: `<factory clone>\PILOT-REPORT.md`.
+- The factory's own skill: `<factory clone>\.claude\skills\factory\SKILL.md`.
 
 ## What exists
-- A working pilot install is in the clone `E:\Documents\Claude\Projects\Binley-factory`, on branch `factory-pilot`. Its working tree has every Windows patch, each marked `# binley:`, including two local commits that were never pushed (the cost-matching fix and the gate's Git Bash fix). Copy from that working tree, not from `origin/factory-pilot`.
+- A working pilot install is in the clone `<factory clone>`, on branch `factory-pilot`. Its working tree has every Windows patch, each marked `# binley:`, including two local commits that were never pushed (the cost-matching fix and the gate's Git Bash fix). Copy from that working tree, not from `origin/factory-pilot`.
 - The pilot took issue #23 to an approved PR in one round (38 minutes, about $4.45). The factory could not merge by itself.
 - This machine is Windows 11 with Git Bash. `python3` does not exist here; `python` does. A bare `bash` from Python or PowerShell is WSL's, which cannot read `E:/` paths.
 - Labels `factory`, `factory:needs-info`, `factory:needs-human` and `human-merge` already exist on GitHub.
@@ -37,7 +37,7 @@ Install the software factory on `main` so it can build this repo's tickets witho
    8. **`job advance` can be re-run.** It must not post the intake comment on the issue twice.
    9. **A narrowed criterion escalates.** If the spec drops or weakens an acceptance criterion from the issue, the approver must ESCALATE. Add this to `approver.md`, beside the existing `human-merge` rule and path list. Update that path list for `main`'s files.
 
-5. **Frontier labeller (P1-08).** Add `factory/bin/frontier`: for every open issue labeled `ready-for-agent` and not yet `factory`, read its blockers from GitHub's issue dependencies API (`gh api repos/harry738/Binley/issues/<n>/dependencies/blocked_by`). If none is open, add the `factory` label. It prints what it released. Add one line to the factory skill so every `/factory run` starts with it.
+5. **Frontier labeller (P1-08).** Add `factory/bin/frontier`: for every open issue labeled `ready-for-agent` and not yet `factory`, read its blockers from GitHub's issue dependencies API (`gh api repos/<owner>/<repo>/issues/<n>/dependencies/blocked_by`). If none is open, add the `factory` label. It prints what it released. Add one line to the factory skill so every `/factory run` starts with it.
 
 6. **Verify, and show me the output.**
    - `bash factory/checks.sh` exits 0 on the branch.

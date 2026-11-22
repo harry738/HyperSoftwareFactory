@@ -4,7 +4,7 @@ Factory Onboarding Wizard — register a project with the Software Factory.
 
 Usage:
     python scripts/factory-onboard.py --interactive
-    python scripts/factory-onboard.py --name propinfo --repo harry738/propInfo.co.uk --council fast
+    python scripts/factory-onboard.py --name my-project --repo owner/my-project --council fast
 
 What it does:
     1. Adds the project to config/projects.yaml.
@@ -153,11 +153,11 @@ def ask(prompt, valid, error):
 def interactive_wizard():
     print("\n" + "=" * 60 + "\n  FACTORY ONBOARDING WIZARD\n" + "=" * 60 + "\n")
     existing = load_config()["projects"]
-    slug = ask("  Project slug (e.g. 'propinfo'): ",
+    slug = ask("  Project slug (e.g. 'my-project'): ",
                lambda s: SLUG_RE.match(s) and s not in existing,
                "2-32 chars, lowercase, no spaces, and not already registered.")
     name = input(f"  Full project name (default: {slug}): ").strip() or slug
-    repo = ask(f"  GitHub repo (e.g. 'harry738/{slug}'): ", REPO_RE.match,
+    repo = ask(f"  GitHub repo (e.g. 'owner/{slug}'): ", REPO_RE.match,
                "Format: 'owner/repo' — no full URL.")
 
     print(f"\n  Checking {repo}...")

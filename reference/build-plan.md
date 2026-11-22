@@ -1,207 +1,217 @@
 # Software Factory — Build Plan
 
-**Version:** v5 (2026-11-22) — Binley is closed as an idea-validation project and its later fixes are harvested into this repo. The plan now carries its learnings forward and earns autonomy on a real project. v4 added a status per task; v3 replaced the phase tables formerly in section 4 of the reference architecture.
+**Version:** v6 (2026-11-22) — sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+
+This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
 ---
 
 ## Objective
 
-One factory that takes signals (issues, bugs, requirements, alerts) to deployed, verified, monitored software across the operator's real projects, with the operator setting policy and not reviewing every change. That is L4 in the table below.
+One factory that takes signals (issues, bugs, requirements, market changes) to deployed, verified, monitored software across the operator's own projects, with the operator setting policy and not reviewing every change.
 
-Binley tested whether the idea works at all. It does. Everything from here is measured on a real project.
+## Operating model
+
+```
+                    ┌──────────────── factory container (local Docker Desktop) ───────────────┐
+ GitHub issues ───▶ │  factory run ──▶ intake ▶ spec ▶ build ▶ gate ▶ reviewers ▶ approver    │ ──▶ PR
+ schedule / Hermes  │      │            (each stage is one headless Claude Code run)          │
+                    │      ├─ per-project config  (private factory home, not the project repo) │
+                    │      ├─ clones, worktrees, job state, event log                          │
+                    │      └─ council slot ──▶ Dev council ──▶ MERGE / REWRITE / ESCALATE      │
+                    └─────────────────────────────────────────────────────────────────────────┘
+```
+
+| Decision | What it means |
+|---|---|
+| Central, not per repo | One factory serves every project. Nothing from the engine is copied into a project repo. |
+| Claude Code is the development engine | Every stage (intake, spec, build, review, approve) is a headless Claude Code run with its own agent definition. |
+| The loop is a script | `factory run` owns the control flow and starts one stage at a time. No model decides what happens next. |
+| Deployed as a container | The factory runs as one container on the operator's local Docker Desktop. It is built on plain Linux first (a dedicated WSL2 distro), so the container is packaging, not a redesign. |
+| A private factory home | A small private repo holds the real project registry and each project's `checks.sh`, `setup.sh` and path rules. This public repo holds the engine and examples only. Secrets are in neither. |
+| Project config stays out of the project | The builder cannot change the checks or rules it is judged by, because they are not in its worktree. |
+| What a project repo does hold | Its own `AGENTS.md`, a `CONTEXT.md` (what the product is, its hard rules), a learnings file and a competitor list. All four are protected paths: agents read them, and they change only through a reviewed PR. |
+| Interface | A command line (`factory onboard`, `factory run`, `factory status`) and the dashboard page. A web app for onboarding is a later feature. |
+| Own projects only | Generality is added when a second project forces it. |
+| Our own engine | Kept under GPLv3 in `factory/`. Designs are borrowed from other projects; whole tools are adopted only for components such as the sandbox. |
+
+**Hermes.** Hermes already runs the Dev council and the Kaizen loop in the operator's current setup, by hand. The plan reuses that: the engine fixes the contracts (an evidence packet in, a verdict out; a digest, a competitor list and proposals out) and Hermes is their first runner. Hermes also starts scheduled runs and sends notifications. All state stays in the factory and GitHub, so a Hermes outage loses nothing. How the engine calls Hermes unattended is open question 1.
 
 ## What Binley validated
 
-Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (jobs 001–011, $27.93 in agent cost, about $2.50 a job).
+Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (about $2.50 a job in agent cost): ten merged, one rejected at intake. The factory merged one PR itself; a person merged the other nine, eight of them because the approver escalated under the project's always-stop rules. One job went through a CHANGES round, five ran the security reviewer, and none failed the gate. Only the first job has a written report ([pilot report](binley/pilot-report-2026-11-21.md)).
 
-- Ten merged and one was rejected at intake.
-- The factory merged one PR itself with `factory/bin/job merge` (job 005). A person merged the other nine: the pilot after a Windows gate fault, and eight because the approver escalated.
-- One job went through a CHANGES round, and five ran the security reviewer.
-- No job failed the gate.
+Binley has no production, no users and no deploy. Its numbers show the mechanism works, not that it can be trusted, and its jobs do not count toward any autonomy level.
 
-Only the pilot has a written report ([pilot report](binley/pilot-report-2026-11-21.md): 38 minutes and $4.45 to an approved PR, 7 of 8 acceptance criteria met). The other figures come from `factory/jobs/` in the Binley factory clone, which this repo does not hold.
-
-**What Binley cannot tell us.** It has no production, no users and no deploy, one stack (Next.js), and issues written by the operator for the factory. So there is no escape rate, no human-edit rate, no rollback and no external intake behind any of the numbers above. They show the mechanism works, not that it can be trusted.
-
-### Learnings carried forward
-
-| # | Learning | Evidence | What we do |
-|---|---|---|---|
-| 1 | Escalations came from the project's always-stop rules, not from doubts about quality | All eight: five `human-merge` labels, two new CI workflows, one skipped criterion. In six the approver found nothing to change | Check label and path rules in a script before the approver runs (S1.13). Count rule and judgment escalations separately |
-| 2 | Enforcing in a script worked each time it replaced a prompt | Binley added, after its trials: an evidence rule for reviews, reviewers by sensitive path, a block on hand merges, a wait for CI before merge | Harvested (S0.6, S0.7). Keep approach rule 4 |
-| 3 | The approver was the only defence against a new CI workflow | Two jobs added `.github/workflows/*.yml`; the gate passed both, because it ignored added files | Fixed (S1.9). Such an issue now stops at the builder and goes to a human |
-| 4 | The gate will not fail by chance | 11 jobs, no gate failure: the builder's Stop hook runs the same checks first | Treat the gate as tamper resistance, and test it with a seeded failure (S1.11) |
-| 5 | Acceptance criteria get narrowed or skipped on the way through | Three of 11 jobs (the pilot, 002, 011). The approver caught the two after the pilot | Keep the rule (S1.5) and move it out of the prompt when a check is possible |
-| 6 | Windows cost most of the debugging | Half of the pilot's twelve problems were Windows-specific in whole or part: lock, bash lookup, orphaned processes, credential prompt | Fixed in code. The setup script (S1.2) is the remainder |
-| 7 | The judgment agents cost more than the build | Pilot: intake, spec and approver were 74% of the cost; the spec alone cost more than the build | Once S1.13 takes the rule checks off the approver, and S1.10 records cost per agent, try cheaper models there |
-
-## Where the code is
-
-`factory/` and `.claude/` in this repo are the factory as Binley left it on 22 Nov 2026, made project-neutral. It has not been installed anywhere else yet.
-
-| Target capability (architecture §) | In this repo today | Gap |
+| # | Learning | What we do |
 |---|---|---|
-| Work-item state machine | `factory/bin/job`, illegal moves refused, live dashboard; the job lock waits, `job advance` and worktree cleanup are safe to re-run, and one stuck job does not stop the queue | Not run above `concurrency` 1 |
-| Intake and triage (§2.1) | `intake` agent on labelled GitHub issues; issue text quoted as data | No social/email/alert intake; no council |
-| Spec (§2.2) | `spec-writer` agent; the approver is told to escalate a spec that narrows a criterion | That rule is in a prompt, not a script |
-| Build (§2.3) | `builder` in a worktree per job, `max_rounds: 3`, `concurrency: 1` | One CHANGES round so far |
-| Deterministic gate | `factory/bin/gate` runs `checks.sh` under a per-worktree lock, fails closed until configured; `protected_paths` cover added, modified, deleted and renamed files | No complexity or secret-scan check by default |
-| Independent verification (§2.4) | Code, security, UI, UX reviewers routed by risk and surface, and by `sensitive_paths`; missing-review guard; a review with no `## Evidence` citing a path and line is refused; UI and UX reviewers drive the page on one shared dev server, and a reviewer that cannot open it sends the job to a human | Reviewers have Bash and Write, so read-only is by instruction, not enforced. No spec-only tester |
-| Security boundaries (§2.5) | Worktree per job on the operator's machine | No budget cap, timeout, egress control, or credential isolation |
-| Risk-tiered merge (§2.6) | Risk from the intake agent; approver merges or escalates; `job merge` waits for required CI; template permission rules and a hook that blocks hand merges | Risk is model-judged, and the always-stop rules live in the approver's prompt. No deploy, no rollback |
-| Observability (§3) | Per-job cost and time, dashboard | No cross-job event log; human-edit and escape rates not recorded; prices in `config.json` unverified |
-| Multi-project | Copy `factory/` and `.claude/` into each repo | Never installed outside Binley. `config/projects.yaml` is not read by the factory |
-| Kaizen (§2.8) | Hand-written pilot report | Not automated |
+| 1 | Every escalation came from an always-stop rule, not from doubt about quality | Check label and path rules in a script before any model is asked (E3.1) |
+| 2 | Enforcing in a script worked each time it replaced a prompt | Keep doing it: caps, rules, reviewer limits and merge all move into the engine |
+| 3 | The approver was the only defence against a new CI workflow | Fixed: the gate rejects new files under protected paths |
+| 4 | The gate will not fail by chance, because the builder runs the same checks first | Test it with a seeded failure (evidence track) |
+| 5 | Acceptance criteria get narrowed or skipped on the way through (three of 11 jobs) | The approver escalates it today; the Dev council sees the original issue in its packet |
+| 6 | Windows cost most of the debugging | The engine moves to Linux; the Windows patches are deleted once the container works |
+| 7 | The judgment agents cost more than the build | Measure cost per agent in the event log, then try cheaper models where a script now does the checking |
+
+## How others do it
+
+The [feature comparison](feature-comparison.md) covers six open-source and seven commercial systems.
+
+- **Every system that runs unattended is central or hosted in CI.** Everything installed per repo is driven by a person. That is why the operating model changed.
+- **The control loop belongs in code.** The published orchestrator designs, and the largest public deployment, all keep the model inside a stage.
+- **Taken from them:** stall detection and retry with backoff, a checkpoint after every stage, a feedback loop from the PR, a setup script per project, a network allowlist, a readiness check at onboarding, and evidence on the PR.
+- **Where this plan is ahead:** risk tiers and path-based routing, specialist reviewers that cannot write, per-stage cost caps, and gate config kept outside the repo. None of the systems documents these.
+- **Where this plan is alone:** no system lets agents approve and merge their own work without heavy mechanical checks. The Dev council's merge power is the least-precedented part, which is why it starts in shadow.
 
 ## Approach
 
-1. **Harden what runs before adding stages.** Eleven jobs on a demonstrator are not evidence. Every step below ends in a number of jobs on a real project.
-2. **Backpressure before forward pressure.** Checks, budgets and isolation land before anything that creates more work.
-3. **Deterministic gates before LLM gates.** `checks.sh` and path rules are cheaper and harder to game than a model's opinion.
-4. **Enforce in scripts and platform settings, not in prompts.** The factory already does this for state; extend it to reviewers, budgets and merge.
-5. **One real project until Step 4 exits.** Then use the second to decide how the registry and the per-repo install fit together.
+1. **Engine first, then features.** The engine is everything deterministic: the loop, the state machine, the gate, routing, isolation, caps, the event log, merge, and the file formats agents write.
+2. **Engine code does not wait for evidence; autonomy does.** The engine is built on a timebox. What the factory may do without the operator is earned on measured jobs.
+3. **Backpressure before forward pressure.** Checks, budgets and isolation land before anything that creates more work.
+4. **Enforce in scripts and platform settings, not in prompts.**
+5. **One real project until the engine track exits.**
 
 ---
 
-## Steps
+## Engine track — three weeks
 
-Steps gate autonomy, not code. A task from a later step may land early when a real job needs it, as several pilot fixes did. An autonomy level is not claimed until its step and every step before it have exited.
+Three weeks is an estimate. The first real job lands inside week one.
 
-Status is **Done** (in this repo), **Partly**, or **Open**. Task IDs are stable and do not imply order within a step.
-
-### Step 0 — Close out Binley
-
-Take everything Binley learned into the project-neutral factory, so the next install starts from the best version.
+Already done in this repo: the per-worktree checks lock, a re-runnable `job advance`, the gate rejecting new and renamed-in protected files, reviewers with a browser on one shared dev server, the evidence rule for reviews, reviewers added by sensitive path, a waiting job lock, `job merge` waiting for required CI, and project-neutral agents.
 
 | ID | Task | Status |
 |---|---|---|
-| S0.1 | Docs consistent: stage and gate counts, repo names, complexity gate definition | Done |
-| S0.2 | Onboarding script fixed, with a self-check (`scripts/test_factory_onboard.py`) | Done |
-| S0.3 | LICENSE, `.gitignore`, `requirements.txt` | Done |
-| S0.4 | Working factory imported; README separates what runs from what is planned | Done |
-| S0.5 | Agents project-neutral: the approver and the security, UI and UX reviewers read the project's rules from `AGENTS.md` (or `CLAUDE.md`) and `sensitive_paths`, not from Binley's file list, label and audience | Done |
-| S0.6 | Harvest Binley's later factory fixes into the neutral copy: evidence rule for reviews, reviewers added by `sensitive_paths`, `job merge` waits for required CI, worktree cleanup safe to repeat, one stuck job no longer stops `job queue`, rejection clears `ready-for-agent`, the Stop hook skips checks that already passed on the same commit | Done |
-| S0.7 | Template permission rules and hook: allow the factory scripts including `job merge`, deny `gh pr merge` and force-push, block hand merges, add `.claude/*` to `protected_paths` | Done: `factory/settings.example.json` and `.claude/hooks/no-hand-merge.py`. The rules are a template, not live in this repo |
+| **E1** | **Factory home, and one job end to end** | |
+| E1.1 | Factory home layout: registry, and per project a config folder with `checks.sh`, `setup.sh` and path rules. Every path the engine uses is relative to that home | Open |
+| E1.2 | `factory onboard <repo>`: clone the repo, create its config folder, check its credentials, and print a readiness checklist (fast checks, tests, CI, branch protection, `AGENTS.md`, `CONTEXT.md`). Replaces the old registry wizard | Open |
+| E1.3 | `factory run <project>`: the script loop. One headless Claude Code run per stage, agents loaded from the factory and not from the project, all state on disk, safe to stop and restart | Open |
+| E1.4 | The engine does every push and every GitHub call. Agent stages run without the GitHub token, in a clone with no production credentials | Open |
+| E1.5 | The project's `setup.sh` runs once per worktree, with the package manager's cache shared across jobs | Open |
+| E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open |
+| **E2** | **Limits, the log, and feedback** | |
+| E2.1 | Per stage: wall-clock timeout, turn cap and USD budget, plus a stall kill when a stage has produced no output for some minutes. A breach sends the job to a person | Open |
+| E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Open |
+| E2.3 | Event log: one append-only typed row per stage transition, per project, with cost, time and outcome | Open |
+| E2.4 | Feedback loop: at the start of each run, a "changes requested" review or a failed CI check on a job's PR starts the next build round with that feedback, inside the three-round cap | Open |
+| **E3** | **Rules in scripts** | |
+| E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Open |
+| E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Open |
+| E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Open |
+| **E4** | **Reviewers, and what the operator sees** | |
+| E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
+| E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |
+| E4.3 | The engine posts the reviewers' summaries, their evidence and the check log on the PR | Open |
+| E4.4 | Non-blocking reviewer notes become follow-up issues. They are not queued automatically | Open |
+| **E5** | **Throughput** | |
+| E5.1 | `concurrency` 2, then 3 | Open |
+| E5.2 | Daily USD budget per project | Open |
+| E5.3 | A scheduled run | Open |
+| **E6** | **The container** | |
+| E6.1 | Network allowlist: package registries, GitHub and the model API only | Open |
+| E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Open |
+| E6.3 | Delete the old path: the LLM-driven loop, install-by-copy, and the Windows patches | Open |
 
-**Exit:** the factory installs into the first real project by copying, with edits only to `checks.sh`, `config.json` and the permission rules. Outside `reference/binley/`, nothing names Binley except the `# binley:` patch markers.
-
-The tasks are done and `factory/test_factory.py` passes. The exit itself waits on the first install (S1.12).
-
-### Step 1 — Reliable on the first real project (autonomy L1)
-
-| ID | Task | Source | Status |
-|---|---|---|---|
-| S1.1 | Decide who merges: a permission rule for `factory/bin/job merge`, or every job stops at `approve` for you | Pilot rec. 1 | Decided for Binley (the rule, limited by the approver's always-stop list). The rule ships in the template (S0.7). For a real project, see open question 2 |
-| S1.2 | Git sign-in through `gh` for every clone the factory runs in, set by a setup script rather than by hand | Pilot rec. 2 | Partly: the scripts make git fail instead of prompting, and the two commands are in `binley/running-the-factory.md`. No script |
-| S1.3 | One lock around `checks.sh` per worktree, so the builder and its Stop hook cannot run `npm ci` at once | Pilot rec. 4 | Done |
-| S1.4 | Make `job advance` safe to re-run (post the issue comment last, or skip if one exists) | Pilot rec. 7 | Done |
-| S1.5 | Rule for narrowed criteria: a spec that weakens an acceptance criterion is a rescope and must be escalated | Pilot rec. 8 | Partly: in the approver's prompt, not enforced by a script |
-| S1.6 | Verify the prices in `factory/config.json` against the published price list | Pilot rec. 10 | Open |
-| S1.7 | Per-job caps in `config.json`: wall-clock timeout and USD budget, checked by `factory/bin/job` at every transition; breach moves the job to `needs-human`. `job` runs between stages, so this does not stop a stage that is still running (see S4.6) | Architecture §2.5 | Open |
-| S1.8 | Branch protection on the project's base branch: PR required, and `checks.sh` run in CI as a required check | Architecture §2.4 | Partly: `job merge` waits for required CI. Each project needs its own ruleset and CI workflow |
-| S1.9 | The gate rejects a new file, or one renamed in, under `protected_paths`. It used to check modified and deleted files only, so a new `.github/workflows/*.yml` passed | Learning 3 | Done here, with a test. Still open in Binley's copy |
-| S1.10 | Cross-job event log: one append-only row per stage transition, written by `factory/bin/job`, with human-edit and escape recorded per job. Moved up from S6.4, because this step's exit needs the numbers | Architecture §3 | Open |
-| S1.11 | Seed a gate failure: run an issue that needs a change under a protected path | Learning 4 | Open |
-| S1.12 | Install the factory in the first real project, with its own `checks.sh`, `protected_paths`, `sensitive_paths` and branch ruleset | — | Open, waits on open question 1 |
-| S1.13 | Always-stop rules in a script: `factory/bin/job` sends a job to a human on a `human-merge` label or a change under an always-stop path, before the approver runs | Learning 1 | Open |
-
-**Exit:** ten real issues through the factory on that project, including at least one gate failure, one CHANGES round, and one escalation. For each: cycle time, cost, whether you had to edit the PR (*human-edit rate*), whether it was reverted or hot-fixed within 14 days of merge (*escape rate*), and whether it was escalated, by a rule or by the approver's judgment (*escalation rate*).
-
-Binley's 11 jobs validated the mechanism and do not count toward this.
-
-### Step 2 — Stronger deterministic backpressure
-
-| ID | Task | Depends on | Status |
-|---|---|---|---|
-| S2.1 | Add a complexity check to the project's `checks.sh`, implementing the complexity-delta definition in architecture §2.4 with an off-the-shelf tool | S1 exit | Open |
-| S2.2 | Add secret scanning and dependency audit to `checks.sh` | S1 exit | Open |
-| S2.3 | Ship these as commented examples in the template `factory/checks.sh` | S2.1, S2.2 | Open |
-
-**Exit:** over at least ten jobs, 80% or more pass the gate on the builder's first push, and no job has merged with a finding these checks would have caught.
-
-### Step 3 — Verification you can trust (autonomy L2)
-
-| ID | Task | Depends on | Status |
-|---|---|---|---|
-| S3.1 | Give the UI and UX reviewers a browser, and one dev server per worktree shared between them and stopped by port | Pilot rec. 3, 6 | Done |
-| S3.2 | Evidence rule in `factory/bin/job`: a review file without an evidence block (test output, log, screenshot path, diff reference) is not accepted, and a reviewer that could not exercise the change must say so | Architecture §2.4 | Done: a review with no `## Evidence` citing a path and line is refused, and a reviewer that cannot open the page writes BLOCKED and the job goes to a human |
-| S3.3 | Reviewers cannot change the branch: after review, the script verifies the worktree's HEAD and tree are unchanged, and fails the round if not | Architecture §2.4 | Open |
-| S3.4 | Spec-only tester: an agent that writes tests from the spec's acceptance criteria and public interface, without the diff. Requires the spec template to state the public interface | Architecture §2.2, §2.4 | Open |
-| S3.5 | Run an issue with a security surface, so the security reviewer is exercised | Pilot rec. 9 | Done on Binley: five jobs |
-| S3.6 | Sensitive-path routing: a change under a sensitive path gets the security reviewer whatever intake said | Learning 2 | Done: `sensitive_paths` and `sensitive_reviewers` in `config.json` |
-
-**Exit:** on twenty jobs, review each PR yourself before reading the reviewers' verdicts, then compare. Proceed only if you found at least ten issues in total and the reviewers missed fewer than one in ten of them.
-
-### Step 4 — Isolation and concurrency
-
-| ID | Task | Depends on | Status |
-|---|---|---|---|
-| S4.1 | Make the Windows job lock wait instead of failing, and kill child processes when a script is stopped | Pilot rec. 5 | Done |
-| S4.2 | Raise `concurrency` to 2, then 3, only after S4.1 | S4.1 | Open |
-| S4.3 | Run the factory from a dedicated clone under an account or machine that holds no deploy secrets and no other projects' credentials | — | Open |
-| S4.4 | Daily USD budget per project, enforced by the scripts | S1.7 | Open |
-| S4.5 | Decide whether to move runs to ephemeral CI runners. Do it if the factory must run unattended overnight or S4.3 proves too weak | S4.3 | Open |
-| S4.6 | Watchdog that stops a running stage when its job breaches the S1.7 caps | S1.7 | Open |
-
-**Exit:** twenty jobs at `concurrency` 3 with no lock crash, no port clash, and no orphaned process; a deliberately runaway job is stopped by its budget.
-
-The microVM, service-mesh and credential-gateway designs in architecture §2.5 are the long-term target. Build them only if a threat model for a specific project shows the above is not enough.
-
-### Step 5 — Risk-tiered merge and deploy (autonomy L3)
-
-| ID | Task | Depends on | Status |
-|---|---|---|---|
-| S5.1 | `risk_paths` in `factory/config.json`: high and medium globs. `factory/bin/route` computes the tier floor from changed paths; the intake agent may raise it, never lower it. No match = MEDIUM | S4 exit | Open |
-| S5.2 | LOW tier merges unattended after gate, reviews and approver all pass | S5.1, S3 exit | Open |
-| S5.3 | HIGH tier always stops for you, whatever the approver says | S5.1 | Open; S1.13 is its first half |
-| S5.4 | Deploy step with a post-deploy health check and automatic rollback to the previous release | S5.1 | Open |
-
-**Exit:** twenty LOW-tier jobs merged unattended with zero escapes, and one rehearsed rollback. Zero in twenty shows the escape rate is probably under about 14%, not that it is zero.
-
-### Step 6 — Second project, intake, council, Kaizen (toward L4)
-
-| ID | Task | Depends on | Status |
-|---|---|---|---|
-| S6.1 | Install the factory in a second real project. Decide then whether `config/projects.yaml` drives installs and updates, or is dropped | S5 exit | Open |
-| S6.2 | A way to update an installed factory from this repo without losing the project's `checks.sh` and `config.json` | S6.1 | Open |
-| S6.3 | Intake trust boundary for external content (social posts, emails, web pages): a tool-less model call summarises it into a fixed schema, and only the summary becomes a GitHub issue | — | Open |
-| S6.4 | Moved to S1.10 | — | — |
-| S6.5 | Weekly Kaizen report from the event log: failures by category, cost per job, cycle time, escape rate, human-edit rate, escalation rate | S1.10 | Open |
-| S6.6 | Council gates, if the Kaizen data shows single-agent intake or approval is the weak point | S6.5 | Open |
-| S6.7 | Monitoring alerts as an intake source | S5.4 | Open |
-
-**Exit:** a signal reaches production without you touching it, for LOW-tier work only, with escape rate no worse than the Step 1 baseline.
+**Exit:** one command starts the container. A labelled issue on the first real project becomes a PR waiting for the operator with no manual step. A deliberately runaway stage is killed by its cap. Stopping and restarting `factory run` mid-job loses nothing.
 
 ---
 
-## Autonomy levels and how to earn them
+## Evidence track — earning autonomy
 
-Levels are per project, and are earned on a real one.
+Levels are per project and are earned on real jobs. Until the Dev council has earned merge power, every job stops for the operator.
 
-| Level | What runs without you | Earned by |
+| Level | What runs without the operator | Earned by |
 |---|---|---|
-| **L1** | Issue to approved PR; you merge | Step 1 exit |
-| **L2** | As L1, with reviewers you have measured | Step 3 exit |
-| **L3** | LOW-tier merge and deploy | Step 5 exit |
-| **L4** | Signal to deploy for LOW tier; you set policy | Step 6 exit, sustained for four weeks |
+| **L1** | Issue to approved PR; the operator merges | Ten real jobs, including one seeded gate failure, one CHANGES round and one escalation. For each: cycle time, cost, whether the operator edited the PR, whether it was reverted or hot-fixed within 14 days, and whether it was escalated by a rule or by judgment |
+| **L2** | As L1, with reviewers that have been measured | On twenty jobs the operator reviews each PR before reading the reviewers' verdicts. At least ten issues found in total, and the reviewers missed fewer than one in ten |
+| **L3** | Merge for the LOW tier, defined by path | Twenty jobs where the Dev council's verdict matched the operator's own decision, then twenty LOW-tier merges with no escape, and one rehearsed rollback |
+| **L4** | Signal to deploy for the LOW tier; the operator sets policy | L3 sustained for four weeks, with the Kaizen loop feeding the queue |
 
-Current level: **none earned**. Binley showed the mechanism works, including one unattended merge, but no real project has run a job.
+Rules that hold at every level:
 
-Demotion rule: any escape on an unattended merge drops that project one level until the cause is fixed and recorded.
+- Always-stop rules by label and path outrank everything, including the Dev council.
+- A project may mark paths that never merge without the operator, whatever the level.
+- Any escape on an unattended merge drops that project one level until the cause is fixed and recorded.
 
-## Deliberately deferred
+---
 
-| Item | Add when |
+## Features, in order
+
+Built after the engine track, one at a time.
+
+### F1 — Dev council, in shadow
+
+A council of models that debates a contested job and decides what happens to it.
+
+- **When it is called.** Wherever a job would otherwise come to the operator: the approver escalates, a stage is blocked, the round limit is hit, or a review is needed. It does not replace the gate, the reviewers or the approver.
+- **What it returns.** MERGE, REWRITE or ESCALATE. REWRITE is one extra build round with the council's direction, outside the three-round cap and limited to one. A split escalates.
+- **Who sits on it.** Three seats from three different labs (Architect, Risk, Product) and a Chair from a fourth. The seat-to-model mapping is configuration, and a project can override it.
+- **How it debates.** Two rounds: independent positions, then one rebuttal where seats see each other. Every answer ends in a structured close: position, confidence, weakest premise, cheapest test.
+- **What it sees.** An evidence packet built by the engine: the issue, the spec, the diff, the gate result, the reviews, the project's `CONTEXT.md` and its learnings file. Seats have no tools. They cannot run code, read the repo or push; the engine carries out the verdict.
+- **Shadow first.** The council records its verdict, the operator decides independently, and the engine logs whether they agreed. Merge power is granted per risk tier once agreement holds (L3).
+- **Grading.** Every verdict is graded later, first against the operator's decision and then against whether the change was reverted or hot-fixed. Accuracy is tracked per seat, so a weak seat or model can be swapped.
+- **Limits.** Each session has a hard cost ceiling, starting at $5 and reset after the first five sessions are measured. A malformed answer gets one retry. The run aborts if a configured model does not exist.
+- **Runner.** Hermes first, since it runs the council today. The contract is fixed by the engine so the runner can change.
+
+Sending diffs and project context to several model vendors is a data decision for each project, set in its config.
+
+### F2 — Hermes: scheduled runs and notifications
+
+Hermes starts `factory run` on a schedule and tells the operator when a job needs them, a PR is ready, or a cap was hit.
+
+### F3 — Weekly Kaizen, inside view
+
+- A report from the event log: the five DORA measures, plus escalation rate, operator-edit rate, cost per job and council agreement.
+- The learnings file: a tracked file in the project's repo, fed by the operator's rejections and by CHANGES rounds, read by the spec-writer and the builder, and curated by the operator each week through a PR.
+
+### F4 — Weekly Kaizen, outside view
+
+- A market watch per project: competitor changelogs, release notes and blogs, GitHub, Hacker News and Reddit to begin with. Sources that need a login or paid access come later.
+- An active competitor list, kept as a tracked file in the project's repo. The factory is registered as one of its own projects; its list is [competitors.md](competitors.md).
+- Each week the loop opens one PR with a dated digest and any changes to the list, and files its ideas as proposal issues. A proposal is never queued automatically: the operator decides, and the Dev council may take over triage for a project once it has merge power there.
+- External text passes through a summariser with no tools before any agent that can act sees it.
+
+### F5 — Holdout checks
+
+A tester writes tests from the spec's acceptance criteria and public interface, without the diff, and the builder never sees them.
+
+### F6 — Deploy and rollback
+
+A deploy step with a health check afterwards and an automatic rollback to the previous release.
+
+### F7 — A second project
+
+Onboarded with `factory onboard`. Whatever the second project needs that the first did not is where generality gets added.
+
+### F8 — Other external intake
+
+Monitoring alerts and other sources, through the same tool-less summariser as F4.
+
+### Carried over, not yet scheduled
+
+| Task | Where it goes |
 |---|---|
-| Parallel subagent fan-out within one spec | Single-builder jobs are reliable and specs are large enough to split on disjoint modules |
-| Council (multi-model debate) | Kaizen data shows where a single agent's judgment fails |
-| Prometheus metrics and health endpoints | The dashboard and the event log stop being enough |
-| MicroVM isolation, credential-injection gateway | A project's threat model requires it |
-| Context7, Modern Web Guidance | A job fails for a stale-API or web-platform reason they would have prevented |
+| Complexity check, secret scan and dependency audit as examples in the template `checks.sh` | With the first project that lacks them; the readiness checklist reports the gap |
+| Verify the prices in `factory/config.json` against the published price list | Before the first cost figures are relied on |
+| A rule for narrowed acceptance criteria that a script can check | When the event log shows how often it happens |
+
+---
+
+## Non-goals
+
+- Steering a run while it is in progress. Feedback goes in between rounds.
+- Other models for the builder or the reviewers. Only council seats use other vendors.
+- A merge queue, a webhook server, a mobile app.
+- Parallel builders inside one spec, Prometheus metrics, microVM isolation. Each waits for evidence that it is needed.
 
 ## Open questions
 
-1. Which real project is first? It needs real users or a production, a deploy that can be rolled back (for S5.4), a test suite that can become `checks.sh`, and a small blast radius. The registry lists the Hyper Trading System and HyperAISystemsOS. HTS moves live capital, so its always-stop list would be long.
-2. Does the factory merge unattended on a real project from day one? Recommended: no. Every job stops at `approve` until S1.13 is in, because until then a prompt is the only thing holding the always-stop rules. That is also what L1 says.
-3. Where does Hermes sit? Recommended: Hermes starts `/factory run` and sends notifications, while `factory/jobs/` and GitHub hold all state, so a Hermes outage loses nothing.
-4. Does the second real project need the central registry (S6.1)?
+1. How does the engine call Hermes unattended and get a verdict back in the fixed format? Until that exists, the council runs as it does today and its verdict is recorded by hand. If Hermes cannot be capped and logged, the council moves into the engine as a script.
+2. Does the first real project have a deploy that can be rolled back (F6)?
+3. Do the model subscription's terms allow unattended runs? The documentation read for this plan does not say.
+4. Does the CLI's cost cap apply on a subscription login? Until that is known, the engine keeps its own cap computed from the run's usage.
+
+## What only the operator can do
+
+- Create the private factory home repo.
+- Create a fine-grained GitHub token per project (contents, pull requests, issues; no workflow scope, no admin), the model login token for the container, and the key for the council's models.
+- Label the first few low-risk issues on the first real project.
