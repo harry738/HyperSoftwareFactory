@@ -155,6 +155,8 @@ class ReviewBindingTests(TemporaryGitRepo):
         self.assertEqual("medium", job.effective_risk(self.j))
 
     def test_documentation_only_remains_low(self):
+        # This fixture's initial feature change is part of the baseline.
+        self.git("update-ref", "refs/remotes/origin/main", self.git("rev-parse", "HEAD"))
         (self.root / "README.md").write_text("Updated docs\n")
         self.commit("docs only")
         self.assertEqual("low", job.effective_risk(self.j))
