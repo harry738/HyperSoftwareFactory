@@ -1,7 +1,7 @@
 # Software Factory — Reference Architecture
 
 **Version:** v1.1 (2026-11-22)
-**Status:** Design draft. Nothing here is built yet; see the [build plan](build-plan.md) for order and status.
+**Status:** Target design. The working factory in `factory/` and `.claude/` implements part of it (issue intake, spec, build, gate, review, approve). The [build plan](build-plan.md) maps each section to what exists and what is next.
 **Source:** Synthesis of Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), arXiv meta-engineering harness, Dexter Horthy — State of Software Factories / Slop Bench (Agentic AI Foundation, 2026-10)
 
 > **Scope.** Sections 1–5 describe the generic factory. Section 6 holds notes specific to the first deployment (HTS, the Hyper Trading System), including components that live in that repo and not here: Buzz relay, Watchdog Bot, `council.py`, the HTS metrics collectors.
@@ -546,4 +546,4 @@ HTS only:
 
 ## 7. Next Steps
 
-See the [build plan](build-plan.md). Step 1 is the walking skeleton: one project, one issue, one human-reviewed PR.
+See the [build plan](build-plan.md). The walking skeleton exists; Step 1 is making it reliable over ten real jobs.

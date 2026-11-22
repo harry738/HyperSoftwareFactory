@@ -14,7 +14,9 @@ harry738/HyperAISystemsOS      ← Project B
 harry738/propInfo.co.uk        ← Project C (future)
 ```
 
-The factory lives in **HyperSoftwareFactory**, this repo. It manages all projects through a single config file.
+The factory lives in **HyperSoftwareFactory**, this repo. The target is to manage all projects through a single config file.
+
+**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. Whether the registry drives installs or is dropped is decided when the second project is onboarded (build plan S6.1).
 
 ## Config
 
