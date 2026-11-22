@@ -59,6 +59,7 @@ is in the main checkout; your one file goes there.
 
 ```markdown
 VERDICT: PASS | CHANGES
+COMMIT: <full SHA from git rev-parse HEAD>
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
@@ -70,7 +71,7 @@ VERDICT: PASS | CHANGES
 Non-blocking observations. Optional.
 ```
 
-- The first line must be exactly `VERDICT: PASS` or `VERDICT: CHANGES`.
+- The first line must be exactly `VERDICT: PASS` or `VERDICT: CHANGES`. Include the exact reviewed commit SHA on the next line; never copy it from a prompt without checking the worktree.
 - Use CHANGES only for real, blocking security problems in this branch's change.
   Don't block on pre-existing issues the change didn't make worse; mention
   them under Notes.
