@@ -16,8 +16,9 @@ sys.path.insert(0, str(BIN))
 
 
 def load_script(name):
-    loader = importlib.machinery.SourceFileLoader("factory_assurance_" + name, str(BIN / name))
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    module_name = "factory_assurance_" + name
+    loader = importlib.machinery.SourceFileLoader(module_name, str(BIN / name))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(module_name, loader))
     loader.exec_module(module)
     return module
 
