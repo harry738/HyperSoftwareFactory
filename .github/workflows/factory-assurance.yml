@@ -1,5 +1,8 @@
 name: Factory assurance tests
 
+env:
+  PYTHONUTF8: "1"
+
 on:
   push:
     branches: [main]
