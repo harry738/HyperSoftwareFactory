@@ -75,6 +75,7 @@ In this project a human must also always see a change that:
 
 ```markdown
 APPROVE | ESCALATE
+COMMIT: <full SHA from git rev-parse HEAD>
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
@@ -93,7 +94,7 @@ files to look at.
 `## Summary` comes right after the header: 3 to 5 short bullets a human can
 skim on the dashboard. The detail goes in the sections below it.
 
-The first line must be exactly `APPROVE` or `ESCALATE`. On ESCALATE, the
+The first line must be exactly `APPROVE` or `ESCALATE`, and the second line must bind the verdict to the worktree HEAD as `COMMIT: <full SHA>`. A high-risk change, changed criterion or undocumented traceability must be ESCALATE; scripts enforce this separately. On ESCALATE, the
 factory posts everything below it as a comment on the PR.
 
 When you're done, reply with one line: the first line of decision.md.
