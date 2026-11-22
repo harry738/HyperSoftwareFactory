@@ -49,24 +49,24 @@
   ],
   "prices_usd_per_mtok": {
     "claude-fable-5-1": {
-      "input": 10.0,
-      "output": 50.0,
+      "input": 10,
+      "output": 50,
       "cache_write_5m": 12.5,
-      "cache_write_1h": 20.0,
+      "cache_write_1h": 20,
       "cache_read": 0.25
     },
     "claude-opus-5-5": {
-      "input": 4.0,
-      "output": 20.0,
-      "cache_write_5m": 5.0,
-      "cache_write_1h": 8.0,
+      "input": 4,
+      "output": 20,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8,
       "cache_read": 0.2
     },
     "claude-sonnet-5-5": {
-      "input": 2.0,
-      "output": 10.0,
+      "input": 2,
+      "output": 10,
       "cache_write_5m": 2.5,
-      "cache_write_1h": 4.0,
+      "cache_write_1h": 4,
       "cache_read": 0.1
     },
     "claude-haiku-5-5": {
@@ -77,11 +77,39 @@
       "cache_read": 0.01
     },
     "claude-fable-5-2": {
-      "input": 8.0,
-      "output": 40.0,
-      "cache_write_5m": 10.0,
-      "cache_write_1h": 16.0,
+      "input": 8,
+      "output": 40,
+      "cache_write_5m": 10,
+      "cache_write_1h": 16,
       "cache_read": 0.2
     }
+  },
+  "merge_policy": {
+    "allow_unattended": false,
+    "unattended_risk": "low"
+  },
+  "risk_paths": {
+    "high": [
+      "factory/**",
+      ".claude/**",
+      ".github/workflows/**",
+      "**/auth/**",
+      "**/permissions/**",
+      "**/migrations/**",
+      "**/payments/**",
+      "**/security/**",
+      "**/ledger/**",
+      "**/secrets/**",
+      "**/package.json",
+      "**/package-lock.json",
+      "package.json",
+      "package-lock.json",
+      "pyproject.toml"
+    ],
+    "low": [
+      "README.md",
+      "docs/**",
+      "**/*.md"
+    ]
   }
 }
