@@ -8,7 +8,7 @@
 
 The walking skeleton exists. `factory/` and `.claude/` run a GitHub issue through intake → spec → build → gate → review → approve → merge, orchestrated by one Claude Code session (`/factory run`), with state in `factory/jobs/` and `factory/bin/job` as its only writer.
 
-Evidence: **one pilot job** on Binley ([pilot report](binley/pilot-report-2026-11-21.md)). 38 minutes and $4.45 to an approved PR, 7 of 8 acceptance criteria met. It exercised the all-PASS path only, and the merge was done by hand after a Windows gate fault.
+Evidence: **one pilot job** on Binley ([pilot report](binley/pilot-report-2026-11-21.md)). 38 minutes and $4.45 to an approved PR, 7 of 8 acceptance criteria met. It exercised the all-PASS path only, and the merge was done by hand after a Windows gate fault. A first overnight run on 22 Nov added seven jobs ($18.84): the factory merged one PR itself with `factory/bin/job merge`, one went through a CHANGES round, and five escalated to a human as designed. None failed the gate.
 
 | Target capability (architecture §) | Working factory today | Gap |
 |---|---|---|
@@ -136,7 +136,7 @@ The microVM, service-mesh and credential-gateway designs in architecture §2.5 a
 | **L3** | LOW-tier merge and deploy | Step 5 exit |
 | **L4** | Signal to deploy for LOW tier; you set policy | Step 6 exit, sustained for four weeks |
 
-Current level on evidence: **L1, not yet earned** (one job of the ten).
+Current level on evidence: **L1, not yet earned**. 11 jobs had run on Binley by 22 Nov 2026, with one unattended merge, one CHANGES round and five escalations, but no gate failure, and the S1.7 caps are not built.
 
 Demotion rule: any escape on an unattended merge drops that project one level until the cause is fixed and recorded.
 

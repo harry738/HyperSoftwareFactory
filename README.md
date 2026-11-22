@@ -17,7 +17,33 @@ The factory takes GitHub issues today, and aims to take raw signals (social inta
 - **Install into a project:** copy `factory/` and `.claude/` into the target repo, then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Intake reads what belongs in the project from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
 - **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
 - **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
-- **Evidence so far:** one pilot job, all-PASS path only, merged by hand after a Windows gate fault. Gate failures, change rounds, the security reviewer and unattended merge are not yet exercised.
+- **Evidence so far:** 11 jobs on Binley by 22 Nov 2026. The pilot was merged by hand after a Windows gate fault; in the first overnight run the factory merged one PR itself, sent one job back for a CHANGES round, and escalated five to a human, as designed. No job has failed the gate yet. See the [pilot report](reference/binley/pilot-report-2026-11-21.md).
+
+## Roadmap
+
+The factory earns autonomy one level at a time, on measured jobs, not on features shipped. Each step below has an exit criterion in the [build plan](reference/build-plan.md); do not start a step until the one before it has exited.
+
+| Step | Goal | Autonomy | Status |
+|---|---|---|---|
+| 0 | Repo hygiene: docs, licences, project-neutral install | – | Mostly done; finish the items under *Now* |
+| 1 | Make the skeleton reliable: merge rule, git sign-in, per-job time and USD caps, branch protection | L1 | In progress: 11 jobs run, with a CHANGES round and escalations; still needs a gate failure and the caps |
+| 2 | Deterministic backpressure: complexity delta, secret scan and dependency audit in `checks.sh` | L1 | Not started |
+| 3 | Verification you can trust: evidence rule, reviewers can't change the branch, spec-only tester, security reviewer exercised | L2 | Partly in code: reviewer browser and one shared dev server |
+| 4 | Isolation and concurrency: dedicated clone with no deploy secrets, daily budget, `concurrency` 2 then 3 | L2 | Partly in code: job lock waits, child processes die with the script |
+| 5 | Risk-tiered merge and deploy: path-based risk floor, LOW merges unattended, HIGH always stops, deploy with rollback | L3 | Not started |
+| 6 | Second project, external intake, event log, weekly Kaizen report, councils if the data asks for them | L4 | Not started |
+
+### Now
+
+- **Finish making the agents project-neutral.** `approver.md`, `reviewer-ui.md` and `reviewer-ux.md` still name Binley's fictional label, demo bar and audience.
+- **Import the factory's permission rules.** Binley's `.claude/settings.json` holds the rule that lets `factory/bin/job merge` run unattended (proven on 22 Nov). It was not part of the import, so a fresh install stops at `approve`.
+- **Close the protected-path gap.** `factory/bin/gate` checks modified and deleted files only, so a new file under a protected glob (a new `.github/workflows/*.yml`) passes. The approver caught both cases on 22 Nov; the gate should.
+- **Bring back Binley's later hardening:** sensitive-path routing to the security reviewer and the `## Evidence` requirement for reviews (Binley #65, after the import).
+- **Step 1 exit:** one job that fails the gate, then the per-job time and USD caps (S1.7).
+
+### Later
+
+Parallel builders within one spec, council gates, Prometheus metrics, microVM isolation, Context7 and Modern Web Guidance are deferred until the data calls for them. The build plan says what would trigger each.
 
 ## Contents
 
@@ -111,7 +137,7 @@ The target is to enforce these by the platform (branch protection, token scopes,
 | **L3** | Low-risk merge and deploy | Step 5 |
 | **L4** | Intake to deploy for low-risk work; you set policy | Step 6 |
 
-The working factory has the machinery for L2 and an approver that can merge. On evidence it is at L1: one job, merged by hand.
+The working factory has the machinery for L2 and an approver that can merge. On evidence it is working toward L1: it has merged a PR unattended, but the Step 1 exit is not met.
 
 ## Planned Integrations
 
