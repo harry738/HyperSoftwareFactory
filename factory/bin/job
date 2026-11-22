@@ -21,6 +21,8 @@ Usage:
 <job> is a job id (004-dark-mode) or an issue number (12).
 """
 
+import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -335,7 +337,12 @@ def sync(job):
             for r in reviewers(job):
                 line = first_line(rd / f"review-{r}.md")
                 m = re.fullmatch(r"VERDICT:\s*(PASS|CHANGES|BLOCKED)", line or "")
-                job["reviews"][r] = m.group(1) if m else ("pending" if line is None else "invalid")
+                if line is None:
+                    job["reviews"][r] = "pending"
+                elif not m or header(rd / f"review-{r}.md").get("COMMIT") != (job.get("review_binding") or {}).get("head"):
+                    job["reviews"][r] = "invalid"
+                else:
+                    job["reviews"][r] = m.group(1)
     job["cost_usd"] = cost_usd(job)
     return job
 
@@ -357,6 +364,61 @@ def git(job, *args, check=True):
     return run(["git", *args], cwd=job["worktree"], check=check)
 
 
+def current_review_binding(job):
+    """Bind a review to the exact branch, base and requirements snapshot."""
+    directory = job_dir(job["id"])
+    def digest(name):
+        return hashlib.sha256((directory / name).read_bytes()).hexdigest()
+    return {
+        "head": git(job, "rev-parse", "HEAD").stdout.strip(),
+        "base": git(job, "rev-parse", f"origin/{BASE}").stdout.strip(),
+        "issue_sha256": digest("issue.md"),
+        "spec_sha256": digest("spec.md"),
+    }
+
+
+def require_review_binding(job):
+    recorded = job.get("review_binding")
+    require(recorded and recorded == current_review_binding(job),
+            "reviewed commit, base or requirements changed; repeat gate and independent reviews")
+    checks = header(round_dir(job) / "checks.md")
+    require(checks.get("GATE") == "PASS" and checks.get("COMMIT") == recorded["head"],
+            "passing gate evidence does not match reviewed commit")
+
+
+def effective_risk(job):
+    """Take the greater of the intake risk and a path-derived risk floor."""
+    changed = git(job, "diff", "--name-only", "-z", "--no-renames",
+                  f"origin/{BASE}...HEAD").stdout.rstrip("\0").split("\0")
+    patterns = CONFIG.get("risk_paths", {})
+    risk = "medium"  # unmatched changes never silently become low
+    for tier in ("high", "medium", "low"):
+        if any(fnmatch.fnmatch(p, pattern) for p in changed if p
+               for pattern in patterns.get(tier, [])):
+            risk = tier
+            break
+    model_risk = (job.get("intake") or {}).get("risk", "medium")
+    rank = {"low": 0, "medium": 1, "high": 2}
+    require(model_risk in rank, f"unrecognised intake risk {model_risk!r}")
+    return max((risk, model_risk), key=rank.get)
+
+
+def unattended_merge_blocker(job):
+    policy = CONFIG.get("merge_policy", {})
+    if not policy.get("allow_unattended", False):
+        return "Unattended merging is disabled by the factory's merge policy."
+    if effective_risk(job) != "low":
+        return "Only LOW-risk changes may merge unattended."
+    if (job.get("intake") or {}).get("rescoped"):
+        return "Intake changed the original scope; human acceptance is required."
+    spec = job_dir(job["id"]) / "spec.md"
+    if header(spec).get("SCOPE_CHANGE") != "no":
+        return "Specification change status is unknown or changed; human acceptance is required."
+    if not section(spec, "Acceptance criteria traceability"):
+        return "Acceptance-criteria traceability is missing; human acceptance is required."
+    return None
+
+
 def pr_state(job):
     return gh_json("pr", "view", str(job["pr"]), "--json", "state")["state"]
 
@@ -374,6 +436,7 @@ def next_round(job):
     round_dir(job).mkdir(exist_ok=True)
     job["gate"] = None
     job["reviews"] = {}
+    job.pop("review_binding", None)
 
 
 def advance(job, stage):
@@ -459,6 +522,7 @@ def advance(job, stage):
                 "checks.md was written for another commit; run the gate again")
         if stage == "review":
             require(h.get("GATE") == "PASS", "the gate didn't pass")
+            job["review_binding"] = current_review_binding(job)
             job["reviews"] = {r: "pending" for r in reviewers(job)}
         else:
             require(h.get("GATE") == "FAIL", "the gate passed")
@@ -482,6 +546,7 @@ def advance(job, stage):
                 for r in blocked))
         elif stage == "approve":
             require(not changes, f"reviews want CHANGES: {', '.join(changes)}")
+            require_review_binding(job)
         else:
             require(changes, "every review passed")
             last = job["round"] >= job["round_limit"]
@@ -497,6 +562,12 @@ def advance(job, stage):
         want = "APPROVE" if stage == "merging" else "ESCALATE"
         line = first_line(d / "decision.md")
         require(line == want, f"decision.md starts with {line!r}, not {want}")
+        if stage == "merging":
+            require_review_binding(job)
+            require(header(d / "decision.md").get("COMMIT") == job["review_binding"]["head"],
+                    "approver verdict is not bound to reviewed commit")
+            require(not unattended_merge_blocker(job),
+                    unattended_merge_blocker(job) or "unattended merge forbidden")
 
     elif old == "needs-human":
         feedback = sorted(d.glob("feedback-*.md"))
@@ -652,6 +723,12 @@ def cmd_queue():
 def cmd_merge(job):
     sync(job)
     if job["stage"] == "approve":
+        reason = unattended_merge_blocker(job)
+        if reason:
+            escalate(job, reason)
+            save(advance(sync(job), "needs-human"))
+            print(f"{job['id']}: needs-human: {reason}")
+            return
         save(advance(job, "merging"))
     if job["stage"] != "merging":
         die(f"{job['id']} is in {job['stage']}, not approve or merging")
@@ -666,6 +743,11 @@ def cmd_merge(job):
         print(f"{job['id']}: needs-human: {why.splitlines()[0]}")
 
     git(job, "fetch", "origin", BASE)
+    try:
+        require_review_binding(job)  # fail closed when the base or reviewed inputs move
+        require(not unattended_merge_blocker(job), "unattended merge policy changed")
+    except Refused as e:
+        return fail(str(e))
     merged = git(job, "merge", "--no-edit", f"origin/{BASE}", check=False)
     if merged.returncode != 0:
         git(job, "merge", "--abort", check=False)
