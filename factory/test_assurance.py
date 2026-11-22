@@ -147,6 +147,17 @@ class ReviewBindingTests(TemporaryGitRepo):
         self.commit("workflow")
         self.assertEqual("high", job.effective_risk(self.j))
 
+    def test_mixed_low_and_unknown_paths_remain_medium(self):
+        (self.root / "README.md").write_text("Updated docs\n")
+        (self.root / "src" / "keep.py").write_text("value = 9\n")
+        self.commit("docs plus unclassified code")
+        self.assertEqual("medium", job.effective_risk(self.j))
+
+    def test_documentation_only_remains_low(self):
+        (self.root / "README.md").write_text("Updated docs\n")
+        self.commit("docs only")
+        self.assertEqual("low", job.effective_risk(self.j))
+
 
 if __name__ == "__main__":
     unittest.main()
