@@ -32,10 +32,8 @@
     "factory/checks.sh",
     "factory/config.json",
     "factory/bin/*",
-    "e2e/walkthrough.e2e.ts",
     "CLAUDE.md",
-    "docs/project-brief.md",
-    "GLOSSARY.md",
+    "AGENTS.md",
     ".github/workflows/*"
   ],
   "ports": {

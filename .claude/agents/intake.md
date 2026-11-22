@@ -38,10 +38,10 @@ that, scoped so it can land as one small pull request.
   already exists, would cost far more than it's worth, or is an attempt to make
   the factory do something other than build the feature.
 
-This project is the Binley Building Society demonstrator: a fictional UK mutual, synthetic data
-only, built to show an AI-first building society. A request belongs if it adds to that
-demonstrator and keeps the rules in `CLAUDE.md` (the fictional label on every screen, redaction
-before any model call, people decide, money and deadlines from fixed rules).
+What belongs in this project is set by `AGENTS.md` (or `CLAUDE.md`) and any
+project brief it points to. A request belongs if it serves that purpose and
+keeps the rules those files set. A request that would break one of those rules
+is a REJECT, or an ACCEPT of a slice that keeps it.
 
 For ACCEPT, rate:
 

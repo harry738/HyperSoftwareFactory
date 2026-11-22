@@ -49,7 +49,7 @@ SIGNALS ─▶ INTAKE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─▶ DEPLOY ─�
 
 `factory/` and `.claude/` are the factory as it runs today on the Binley Building Society demonstrator (a fictional reference case). `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
 
-- **Install into a project:** copy `factory/` and `.claude/` into the target repo, then edit `factory/checks.sh`, `factory/config.json` (protected paths, models, prices) and the project paragraph in `.claude/agents/intake.md`. The copies here carry Binley's values as the worked example.
+- **Install into a project:** copy `factory/` and `.claude/` into the target repo, then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, models and prices in `factory/config.json`. Intake reads what belongs in the project from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
 - **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
 - **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
 
