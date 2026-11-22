@@ -255,6 +255,34 @@ def test_template_sensitive_paths():  # the shipped defaults catch manifests, lo
         assert any(fnmatch.fnmatch(path, p) for p in job.CONFIG["sensitive_paths"]) == hit, path
 
 
+def test_gate_rejects_new_and_renamed_in_protected_files():  # S1.9: a new CI workflow used to pass
+    gate = load_script("gate")
+    repo = TMP / "protectedrepo"
+
+    def g(*args):
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *args],
+                       check=True, capture_output=True)
+
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "docs").mkdir()
+    (repo / "docs" / "deploy.yml").write_text("on: push\n")
+    (repo / "README.md").write_text("x\n")
+    g("add", "-A")
+    g("commit", "-q", "-m", "base")
+    g("update-ref", f"refs/remotes/origin/{gate.CONFIG['base_branch']}", "HEAD")
+    assert gate.protected_changes(repo) == []
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "new.yml").write_text("on: pull_request\n")  # added
+    g("mv", "docs/deploy.yml", ".github/workflows/deploy.yml")  # renamed in
+    (repo / "README.md").write_text("y\n")  # not protected
+    g("add", "-A")
+    g("commit", "-q", "-m", "branch")
+    hits = gate.protected_changes(repo)
+    assert any(h.endswith(".github/workflows/new.yml") for h in hits), hits
+    assert any(h.endswith(".github/workflows/deploy.yml") for h in hits), hits
+    assert not any("README.md" in h for h in hits), hits
+
+
 def test_hook_skips_checks_after_a_clean_pass():  # hardening: the Stop hook doesn't repeat a passed run
     gate = load_script("gate")
     repo = TMP / "hookrepo"

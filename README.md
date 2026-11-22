@@ -26,7 +26,7 @@ The objective is one factory that takes signals to deployed, verified, monitored
 | Step | Goal | Autonomy | Status |
 |---|---|---|---|
 | 0 | Close out Binley: harvest its later fixes, neutral agents, template permission rules | – | Tasks done; exits with the first install |
-| 1 | Reliable on the first real project: install, protected-path fix, always-stop rules in a script, per-job time and USD caps, branch protection, event log | L1 | Not started on a real project. S1.3 and S1.4 are done in code; Binley's 11 jobs do not count toward the exit |
+| 1 | Reliable on the first real project: install, always-stop rules in a script, per-job time and USD caps, branch protection, event log | L1 | Not started on a real project. S1.3, S1.4 and S1.9 (the gate rejects new files under a protected path) are done in code; Binley's 11 jobs do not count toward the exit |
 | 2 | Deterministic backpressure: complexity delta, secret scan and dependency audit in `checks.sh` | L1 | Not started |
 | 3 | Verification you can trust: evidence rule, reviewers can't change the branch, spec-only tester, security reviewer exercised | L2 | Landed early: S3.1 (reviewer browser, one shared dev server), S3.2 (evidence rule), S3.6 (reviewers by sensitive path); S3.5 done on Binley |
 | 4 | Isolation and concurrency: dedicated clone with no deploy secrets, daily budget, watchdog, `concurrency` 2 then 3 | L2 | Landed early: S4.1 (job lock waits, child processes die with the script) |
@@ -37,9 +37,8 @@ The objective is one factory that takes signals to deployed, verified, monitored
 
 Task IDs are the build plan's.
 
-- **Close the protected-path gap (S1.9).** `factory/bin/gate` checks modified and deleted files only, so a new file under a protected glob (a new `.github/workflows/*.yml`) passes. The approver caught both cases on 22 Nov; the gate should.
 - **Move the always-stop rules into a script (S1.13).** All eight Binley escalations came from a label or a path rule that the approver applied from its prompt.
-- **Pick the first real project and install there (S1.12).** See the build plan's open question 1. Every job stops at `approve` for you until S1.9 and S1.13 are in.
+- **Pick the first real project and install there (S1.12).** See the build plan's open question 1. Every job stops at `approve` for you until S1.13 is in.
 - **Then the rest of Step 1:** a seeded gate failure (S1.11), the event log with human-edit, escape and escalation rates (S1.10), per-job time and USD caps (S1.7), the git sign-in script (S1.2), verified prices (S1.6) and branch protection (S1.8).
 
 ### Later

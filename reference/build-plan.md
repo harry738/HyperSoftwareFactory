@@ -29,7 +29,7 @@ Only the pilot has a written report ([pilot report](binley/pilot-report-2026-11-
 |---|---|---|---|
 | 1 | Escalations came from the project's always-stop rules, not from doubts about quality | All eight: five `human-merge` labels, two new CI workflows, one skipped criterion. In six the approver found nothing to change | Check label and path rules in a script before the approver runs (S1.13). Count rule and judgment escalations separately |
 | 2 | Enforcing in a script worked each time it replaced a prompt | Binley added, after its trials: an evidence rule for reviews, reviewers by sensitive path, a block on hand merges, a wait for CI before merge | Harvested (S0.6, S0.7). Keep approach rule 4 |
-| 3 | The approver was the only defence against a new CI workflow | Two jobs added `.github/workflows/*.yml`; the gate passed both, because it ignores added files | Fix the gate (S1.9) |
+| 3 | The approver was the only defence against a new CI workflow | Two jobs added `.github/workflows/*.yml`; the gate passed both, because it ignored added files | Fixed (S1.9). Such an issue now stops at the builder and goes to a human |
 | 4 | The gate will not fail by chance | 11 jobs, no gate failure: the builder's Stop hook runs the same checks first | Treat the gate as tamper resistance, and test it with a seeded failure (S1.11) |
 | 5 | Acceptance criteria get narrowed or skipped on the way through | Three of 11 jobs (the pilot, 002, 011). The approver caught the two after the pilot | Keep the rule (S1.5) and move it out of the prompt when a check is possible |
 | 6 | Windows cost most of the debugging | Half of the pilot's twelve problems were Windows-specific in whole or part: lock, bash lookup, orphaned processes, credential prompt | Fixed in code. The setup script (S1.2) is the remainder |
@@ -45,7 +45,7 @@ Only the pilot has a written report ([pilot report](binley/pilot-report-2026-11-
 | Intake and triage (§2.1) | `intake` agent on labelled GitHub issues; issue text quoted as data | No social/email/alert intake; no council |
 | Spec (§2.2) | `spec-writer` agent; the approver is told to escalate a spec that narrows a criterion | That rule is in a prompt, not a script |
 | Build (§2.3) | `builder` in a worktree per job, `max_rounds: 3`, `concurrency: 1` | One CHANGES round so far |
-| Deterministic gate | `factory/bin/gate` runs `checks.sh` under a per-worktree lock, fails closed until configured; `protected_paths` | A new file, or one renamed in, under a protected path passes. No complexity or secret-scan check by default |
+| Deterministic gate | `factory/bin/gate` runs `checks.sh` under a per-worktree lock, fails closed until configured; `protected_paths` cover added, modified, deleted and renamed files | No complexity or secret-scan check by default |
 | Independent verification (§2.4) | Code, security, UI, UX reviewers routed by risk and surface, and by `sensitive_paths`; missing-review guard; a review with no `## Evidence` citing a path and line is refused; UI and UX reviewers drive the page on one shared dev server, and a reviewer that cannot open it sends the job to a human | Reviewers have Bash and Write, so read-only is by instruction, not enforced. No spec-only tester |
 | Security boundaries (§2.5) | Worktree per job on the operator's machine | No budget cap, timeout, egress control, or credential isolation |
 | Risk-tiered merge (§2.6) | Risk from the intake agent; approver merges or escalates; `job merge` waits for required CI; template permission rules and a hook that blocks hand merges | Risk is model-judged, and the always-stop rules live in the approver's prompt. No deploy, no rollback |
@@ -99,7 +99,7 @@ The tasks are done and `factory/test_factory.py` passes. The exit itself waits o
 | S1.6 | Verify the prices in `factory/config.json` against the published price list | Pilot rec. 10 | Open |
 | S1.7 | Per-job caps in `config.json`: wall-clock timeout and USD budget, checked by `factory/bin/job` at every transition; breach moves the job to `needs-human`. `job` runs between stages, so this does not stop a stage that is still running (see S4.6) | Architecture §2.5 | Open |
 | S1.8 | Branch protection on the project's base branch: PR required, and `checks.sh` run in CI as a required check | Architecture §2.4 | Partly: `job merge` waits for required CI. Each project needs its own ruleset and CI workflow |
-| S1.9 | The gate rejects a new file, or one renamed in, under `protected_paths`. Today it checks modified and deleted files only, so a new `.github/workflows/*.yml` passes | Learning 3 | Open, in Binley too |
+| S1.9 | The gate rejects a new file, or one renamed in, under `protected_paths`. It used to check modified and deleted files only, so a new `.github/workflows/*.yml` passed | Learning 3 | Done here, with a test. Still open in Binley's copy |
 | S1.10 | Cross-job event log: one append-only row per stage transition, written by `factory/bin/job`, with human-edit and escape recorded per job. Moved up from S6.4, because this step's exit needs the numbers | Architecture §3 | Open |
 | S1.11 | Seed a gate failure: run an issue that needs a change under a protected path | Learning 4 | Open |
 | S1.12 | Install the factory in the first real project, with its own `checks.sh`, `protected_paths`, `sensitive_paths` and branch ruleset | — | Open, waits on open question 1 |
@@ -202,6 +202,6 @@ Demotion rule: any escape on an unattended merge drops that project one level un
 ## Open questions
 
 1. Which real project is first? It needs real users or a production, a deploy that can be rolled back (for S5.4), a test suite that can become `checks.sh`, and a small blast radius. The registry lists the Hyper Trading System and HyperAISystemsOS. HTS moves live capital, so its always-stop list would be long.
-2. Does the factory merge unattended on a real project from day one? Recommended: no. Every job stops at `approve` until S1.9 and S1.13 are in, because until then a prompt is the only thing holding the always-stop rules. That is also what L1 says.
+2. Does the factory merge unattended on a real project from day one? Recommended: no. Every job stops at `approve` until S1.13 is in, because until then a prompt is the only thing holding the always-stop rules. That is also what L1 says.
 3. Where does Hermes sit? Recommended: Hermes starts `/factory run` and sends notifications, while `factory/jobs/` and GitHub hold all state, so a Hermes outage loses nothing.
 4. Does the second real project need the central registry (S6.1)?

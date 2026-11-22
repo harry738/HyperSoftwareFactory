@@ -78,7 +78,9 @@ The approver escalates to a human when one of these is a product decision.
 - `factory/checks.sh` runs the repo's tests, lint and build on every round, so
   don't restate it as a criterion. Ask for new tests where the repo has a test
   runner and the behaviour can be tested.
-- Never require a change to a file matching `protected_paths` in
-  `factory/config.json`: the gate fails any branch that modifies one.
+- Never require a change to, or a new file under, a path matching
+  `protected_paths` in `factory/config.json`: the gate fails any branch that
+  adds or modifies one. If the issue can't be met without it, say so under
+  Assumptions: the builder will stop there and the job goes to a human.
 
 When you're done, reply with one line: `SPEC: <short title>`.
