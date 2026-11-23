@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6 (2026-11-22) — sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.1 (2026-11-23) — sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -35,7 +35,13 @@ One factory that takes signals (issues, bugs, requirements, market changes) to d
 | Own projects only | Generality is added when a second project forces it. |
 | Our own engine | Kept under GPLv3 in `factory/`. Designs are borrowed from other projects; whole tools are adopted only for components such as the sandbox. |
 
-**Hermes.** Hermes already runs the Dev council and the Kaizen loop in the operator's current setup, by hand. The plan reuses that: the engine fixes the contracts (an evidence packet in, a verdict out; a digest, a competitor list and proposals out) and Hermes is their first runner. Hermes also starts scheduled runs and sends notifications. All state stays in the factory and GitHub, so a Hermes outage loses nothing. How the engine calls Hermes unattended is open question 1.
+**Hermes.** Hermes runs a council and a Kaizen loop in the operator's current setup, by hand. The plan splits the two by what is at stake:
+
+- **The Dev council runs in the engine, as a script.** It is meant to earn merge power, so it gets the same guarantees as the rest of the merge path: fixed control flow, enforced limits, and grading in the event log.
+- **The market watch stays in Hermes.** It is not in the merge path, and Hermes already does the research. It drops its digest, competitor-list changes and proposals in a folder; the engine opens the PR and the issues, so Hermes holds no GitHub token.
+- **Hermes also starts scheduled runs and sends notifications.**
+
+All state stays in the factory and GitHub, so a Hermes outage loses nothing.
 
 ## What Binley validated
 
@@ -150,7 +156,7 @@ A council of models that debates a contested job and decides what happens to it.
 - **Shadow first.** The council records its verdict, the operator decides independently, and the engine logs whether they agreed. Merge power is granted per risk tier once agreement holds (L3).
 - **Grading.** Every verdict is graded later, first against the operator's decision and then against whether the change was reverted or hot-fixed. Accuracy is tracked per seat, so a weak seat or model can be swapped.
 - **Limits.** Each session has a hard cost ceiling, starting at $5 and reset after the first five sessions are measured. A malformed answer gets one retry. The run aborts if a configured model does not exist.
-- **Runner.** Hermes first, since it runs the council today. The contract is fixed by the engine so the runner can change.
+- **Runner.** A script in the engine that calls the models directly through one API gateway. Its key lives in the factory's secrets, where no agent can read it. Hermes can later call the same script for product decisions, so there is one set of council rules.
 
 Sending diffs and project context to several model vendors is a data decision for each project, set in its config.
 
@@ -165,9 +171,10 @@ Hermes starts `factory run` on a schedule and tells the operator when a job need
 
 ### F4 — Weekly Kaizen, outside view
 
-- A market watch per project: competitor changelogs, release notes and blogs, GitHub, Hacker News and Reddit to begin with. Sources that need a login or paid access come later.
+- A market watch per project, run by Hermes: competitor changelogs, release notes and blogs, GitHub, Hacker News and Reddit to begin with. Sources that need a login or paid access come later.
+- Hermes writes its output to a drop folder in a fixed format. The engine reads it and makes every GitHub call.
 - An active competitor list, kept as a tracked file in the project's repo. The factory is registered as one of its own projects; its list is [competitors.md](competitors.md).
-- Each week the loop opens one PR with a dated digest and any changes to the list, and files its ideas as proposal issues. A proposal is never queued automatically: the operator decides, and the Dev council may take over triage for a project once it has merge power there.
+- Each week the engine opens one PR with the dated digest and any changes to the list, and files the ideas as proposal issues. A proposal is never queued automatically: the operator decides, and the Dev council may take over triage for a project once it has merge power there.
 - External text passes through a summariser with no tools before any agent that can act sees it.
 
 ### F5 — Holdout checks
@@ -205,7 +212,7 @@ Monitoring alerts and other sources, through the same tool-less summariser as F4
 
 ## Open questions
 
-1. How does the engine call Hermes unattended and get a verdict back in the fixed format? Until that exists, the council runs as it does today and its verdict is recorded by hand. If Hermes cannot be capped and logged, the council moves into the engine as a script.
+1. What exactly does Hermes write to the drop folder, and how does it start `factory run` on a schedule? Both need a look at the Hermes setup, which this plan was written without.
 2. Does the first real project have a deploy that can be rolled back (F6)?
 3. Do the model subscription's terms allow unattended runs? The documentation read for this plan does not say.
 4. Does the CLI's cost cap apply on a subscription login? Until that is known, the engine keeps its own cap computed from the run's usage.
