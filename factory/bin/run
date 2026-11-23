@@ -1,0 +1,281 @@
+#!/usr/bin/env python
+"""Work the queue: every labelled issue goes through the pipeline, one headless
+Claude Code run per stage.
+
+Usage: run [<issue>]        normally: factory run <project> [<issue>]
+
+This script is the loop. No model decides what happens next: each step reads
+the job's files and calls factory/bin/job, which refuses illegal moves. All
+state is on disk, so stopping this script and starting it again loses nothing:
+a job picks up at the stage it was in.
+
+Agents are loaded from the engine's .claude/agents/, not from the project, and
+run without the GitHub token: the factory does every push and GitHub call.
+"""
+
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import proc
+
+proc.setup()
+
+BIN = Path(__file__).resolve().parent
+AGENTS = BIN.parents[1] / ".claude" / "agents"
+LAYOUT = proc.layout(__file__)
+REPO, JOBS = LAYOUT["repo"], LAYOUT["jobs"]
+CONFIG = json.loads(LAYOUT["config"].read_text())
+CLAUDE = shlex.split(os.environ.get("FACTORY_CLAUDE", "claude"))  # tests point this at a stand-in
+# ponytail: one wall-clock limit per stage. Turn and cost caps and a stall kill are build plan E2.1.
+TIMEOUT = CONFIG.get("stage_timeout_minutes", 60) * 60
+DONE = {"merged", "rejected", "needs-info", "needs-human"}
+TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
+
+
+def script(name, *args):
+    return subprocess.run([sys.executable, str(BIN / name), *args], capture_output=True, text=True)
+
+
+def job(*args):
+    """Run factory/bin/job. Returns (ok, its output)."""
+    res = script("job", *args)
+    return res.returncode == 0, (res.stdout + res.stderr).strip()
+
+
+def load(job_id):
+    return json.loads((JOBS / job_id / "job.json").read_text())
+
+
+def first_line(path):
+    return path.read_text().split("\n", 1)[0].strip() if path.exists() else None
+
+
+def say(j, text):
+    print(f"{j['id']} #{j['issue']}: {text}", flush=True)
+    return False
+
+
+def advance(j, stage, quiet=False):
+    ok, out = job("advance", j["id"], stage)
+    if ok or not quiet:
+        print(out, flush=True)
+    return ok
+
+
+def port(j, offset):
+    return CONFIG["ports"]["base"] + offset + CONFIG["ports"]["step"] * int(j["id"][:3])
+
+
+# ---- Headless agents --------------------------------------------------------
+
+
+def agent_definition(name):
+    """One agent from .claude/agents/<name>.md: its instructions, model and tools.
+    Hooks in the file are dropped: this script runs the gate itself."""
+    _, front, body = (AGENTS / f"{name}.md").read_text(encoding="utf-8").split("---\n", 2)
+    meta = dict(re.findall(r"^(tools|model): *(.+)$", front, re.M))
+    return {"prompt": body.strip(), "model": meta["model"], "tools": [t.strip() for t in meta["tools"].split(",")]}
+
+
+def last_session(j, agent):
+    usage = JOBS / j["id"] / "usage.jsonl"
+    rows = [json.loads(line) for line in usage.read_text().splitlines()] if usage.exists() else []
+    sessions = [r["session"] for r in rows if r["agent"] == agent and r["ok"] and r.get("session")]
+    return sessions[-1] if sessions else None
+
+
+def run_agent(j, agent, message, model=None, resume=None):
+    """One headless Claude Code run for one stage. True when it finished cleanly."""
+    d = JOBS / j["id"]
+    definition = agent_definition(agent)
+    definition["model"] = model or definition["model"]
+    worktree = Path(j["worktree"])
+    checks = f"{Path(sys.executable).as_posix()} {(BIN / 'gate').as_posix()} --checks"
+    header = (f"Job: {j['id']}. Job folder: {d.as_posix()}/. Main checkout: {REPO.as_posix()}. "
+              f"Worktree: {j['worktree']}. Branch: {j['branch']}. Base: origin/{CONFIG['base_branch']}. "
+              f"Issue: #{j['issue']}. Config: {LAYOUT['config'].as_posix()}. Checks command: {checks}.")
+    # The agent's instructions go in by file, and it gets exactly its own tools: nothing else is
+    # available (--tools), and nothing needs a person to approve it (--allowedTools, dontAsk).
+    instructions = d / f"agent-{agent}.md"
+    instructions.write_text(definition["prompt"], encoding="utf-8")
+    exe = shutil.which(CLAUDE[0]) or CLAUDE[0]
+    cmd = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
+           "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
+           "--output-format", "json", "--permission-mode", "dontAsk", "--tools", *definition["tools"],
+           "--allowedTools", *definition["tools"], "--add-dir", d.as_posix(), REPO.as_posix()]
+    if resume:
+        cmd += ["--resume", resume]
+    env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
+    start = time.monotonic()
+    try:
+        res = subprocess.run(cmd, cwd=worktree if worktree.exists() else REPO, env=env,
+                             capture_output=True, text=True, timeout=TIMEOUT)
+        out, code = res.stdout, res.returncode
+    except subprocess.TimeoutExpired:
+        out, code = "", f"timeout after {TIMEOUT}s"
+    try:
+        result = json.loads(out)
+    except ValueError:
+        result = {}
+    ok = code == 0 and not result.get("is_error")
+    with (d / "usage.jsonl").open("a") as f:
+        f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": ok,
+                            "cost_usd": result.get("total_cost_usd") or 0, "session": result.get("session_id"),
+                            "seconds": int(time.monotonic() - start)}) + "\n")
+    if not ok:
+        say(j, f"{agent} failed ({code}): {str(result.get('result') or out)[-300:].strip()}")
+    return ok
+
+
+# ---- One step per stage -----------------------------------------------------
+
+
+def build(j):
+    d, n = JOBS / j["id"], j["round"]
+    message = f"Build round {n}. Port: {port(j, 0)}."
+    if n > 1:
+        prev = d / f"round-{n - 1}"
+        feedback = sorted(d.glob("feedback-*.md"))
+        newest = max((p.stat().st_mtime for p in prev.glob("*")), default=0)
+        if feedback and feedback[-1].stat().st_mtime > newest:
+            message += f" The user gave feedback: read {feedback[-1].name} and address it, commit, and update build.md for round {n}."
+        elif first_line(prev / "checks.md") == "GATE: FAIL":
+            message += f" The gate failed: read round-{n - 1}/checks.md and checks.log, fix it, commit, and update build.md."
+        else:
+            message += f" Round {n - 1} reviews are in round-{n - 1}/. Address every VERDICT: CHANGES, commit, and update build.md for round {n}."
+    session = last_session(j, "builder") if n > 1 else None
+    if not run_agent(j, "builder", message, resume=session) and not (session and run_agent(j, "builder", message)):
+        return False
+    if first_line(d / "build.md") == "STATUS: BLOCKED":
+        return advance(j, "needs-human")
+    ok, why = job("advance", j["id"], "gate")
+    if ok:
+        print(why, flush=True)
+        return True
+    say(j, f"the gate step refused the build: {why}")  # nothing committed, or a dirty tree: tell the builder once
+    return run_agent(j, "builder", f"Build round {n}. The factory refused to send your build to the gate: {why} "
+                     "Fix that, commit, and update build.md.", resume=last_session(j, "builder")) and advance(j, "gate")
+
+
+def review(j):
+    rd = JOBS / j["id"] / f"round-{j['round']}"
+    job("serve", j["id"])  # starts the shared review dev server again if it died
+    reviewers = j["agents"]["reviewers"]
+
+    def one(r, extra=""):
+        page = f" Port: {port(j, 1)}." if r in {"ux", "ui"} else ""
+        return run_agent(j, f"reviewer-{r}", f"Review round {j['round']}.{page}{extra}", model=reviewers[r])
+
+    missing = [r for r in reviewers if not (rd / f"review-{r}.md").exists()]
+    with ThreadPoolExecutor(max_workers=len(missing) or 1) as pool:  # reviewers run in parallel; wait for all
+        if not all(list(pool.map(one, missing))):
+            return False
+    for attempt in (1, 2):
+        job("sync", j["id"])
+        verdicts = set(load(j["id"])["reviews"].values())
+        target = "needs-human" if "BLOCKED" in verdicts else "build" if "CHANGES" in verdicts else "approve"
+        ok, why = job("advance", j["id"], target)
+        if ok:
+            print(why, flush=True)
+            return True
+        if target == "build" and "go to needs-human" in why:  # that was the last round
+            return advance(j, "needs-human")
+        thin = re.findall(r"review-(\w+)\.md has no", why)  # a review that cites no evidence goes back once
+        if attempt == 2 or not thin:
+            return say(j, why)
+        if not all(one(r, f" The factory refused your review: {why}") for r in thin):
+            return False
+
+
+def step(j):
+    """Do the job's next step. False when a stage failed: the job stays where it is for the next run."""
+    d, stage = JOBS / j["id"], j["stage"]
+    if stage == "intake":
+        if not run_agent(j, "intake", ""):
+            return False
+        decision = first_line(d / "intake.md")
+        if decision == "DECISION: ACCEPT":
+            res = script("route", j["id"])
+            print((res.stdout + res.stderr).strip(), flush=True)
+            return res.returncode == 0 and advance(j, "spec")
+        return advance(j, {"DECISION: NEEDS-INFO": "needs-info", "DECISION: REJECT": "rejected"}.get(decision, "spec"))
+    if stage == "spec":
+        return run_agent(j, "spec-writer", "") and advance(j, "build")
+    if stage == "build":
+        return build(j)
+    if stage == "gate":
+        res = script("gate", j["id"])
+        print((res.stdout + res.stderr).strip(), flush=True)
+        if res.returncode == 0:
+            return advance(j, "review")
+        return res.returncode == 1 and (advance(j, "build", quiet=True) or advance(j, "needs-human"))
+    if stage == "review":
+        return review(j)
+    if stage == "approve":
+        if not run_agent(j, "approver", f"PR: #{j['pr']}. Final round: {j['round']}."):
+            return False
+        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True):
+            stage = "merging"
+        else:  # ESCALATE, or approved with unattended merge off: a person merges
+            return advance(j, "needs-human")
+    if stage == "merging":
+        ok, out = job("merge", j["id"])
+        print(out, flush=True)
+        return ok
+    return say(j, f"nothing to do in stage {stage}")
+
+
+def process(job_id):
+    """Take one job as far as it goes: to done, to a person, or to a failed stage."""
+    while True:
+        j = load(job_id)
+        if j["stage"] in DONE:
+            return True
+        if not step(j):
+            return False
+        after = load(job_id)
+        if (after["stage"], after["round"]) == (j["stage"], j["round"]):
+            return say(j, f"no progress in {j['stage']}; stopping this job")
+
+
+def main(argv):
+    only = int(argv[0]) if argv else None
+    res = script("frontier")
+    print((res.stdout + res.stderr).strip(), flush=True)
+    failed, touched = set(), []
+    while True:
+        ok, out = job("queue")
+        if not ok:
+            sys.exit(out)
+        rows = [line.split("\t") for line in out.splitlines() if "\t" in line]
+        todo = [r for r in rows if r[0] in {"new", "resume"} and int(r[1]) not in failed and only in {None, int(r[1])}]
+        if not todo:
+            break
+        action, issue, job_id, stage = todo[0][:4]
+        if action == "new":
+            ok, out = job("create", issue)
+            job_id = out.splitlines()[-1].strip() if ok else None
+        elif stage == "needs-info":  # the author replied
+            ok, out = job("advance", job_id, "intake")
+        if not ok:
+            print(out, flush=True)
+            failed.add(int(issue))
+            continue
+        touched.append(job_id)
+        if not process(job_id):
+            failed.add(int(issue))
+    if touched:
+        print(job("summary", *dict.fromkeys(touched))[1], flush=True)
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

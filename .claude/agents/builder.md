@@ -55,19 +55,18 @@ other jobs.
 - Make the simplest change that fully meets the spec. No fallbacks, hidden
   defaults or extras the spec doesn't ask for.
 - Never add, modify, delete or rename a file that matches `protected_paths` in
-  `factory/config.json`; the gate fails the branch if you do. A new file under
+  the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout); the gate fails the branch if you do. A new file under
   a protected path counts. If the spec can't be met without one, write a
   BLOCKED build.md that says which file and why.
 
 ## Test
 
-Run `<main checkout>/factory/bin/gate --checks` from the worktree
-(`cd <worktree> && <main checkout>/factory/bin/gate --checks`). It runs
-`factory/checks.sh` and must pass: the gate runs exactly this after you finish,
-and reviewers only start once it passes. Run it in the foreground and wait for
-it, never with `run_in_background` and never twice at once: a run you leave
-behind holds the worktree's lock and the gate waits for it. Your Stop hook skips
-its own run when your last run passed on the commit you finish on.
+Run the checks from the worktree: the `Checks command:` in your prompt when it
+gives one, otherwise `<main checkout>/factory/bin/gate --checks`. It runs the
+project's `checks.sh` and must pass: the gate runs exactly this after you
+finish, and reviewers only start once it passes. Run it in the foreground and
+wait for it, never with `run_in_background` and never twice at once: a run you
+leave behind holds the worktree's lock and the gate waits for it.
 
 Then verify every acceptance criterion and record the evidence in build.md: the
 command you ran and its result, or what the page showed.
@@ -90,12 +89,9 @@ command you ran and its result, or what the page showed.
   `git log --oneline`. One commit per distinct piece of work.
 - Stage explicit paths, never `git add -A`. Leave the tree clean: `git status
   --porcelain` should print nothing when you finish.
-- Push with `git push -u origin <branch>`. Push only the job branch, never
-  anything else.
-- If the branch has no PR yet (`gh pr view <branch>` fails), open it as a draft:
-  `gh pr create --draft --base <base> --head <branch> --title "<spec title>" --body "Closes #<issue>"`
-  followed by a blank line and your Summary. Once it exists, just push; the PR
-  updates itself. Never mark the PR ready and never merge it.
+- Don't push, and don't open or change a pull request. The factory pushes the
+  branch and opens the draft PR when your build goes to the gate. You have no
+  GitHub credentials and need none.
 
 ## Write build.md
 

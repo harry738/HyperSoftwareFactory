@@ -88,12 +88,12 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | ID | Task | Status |
 |---|---|---|
 | **E1** | **Factory home, and one job end to end** | |
-| E1.1 | Factory home layout: registry, and per project a config folder with `checks.sh`, `setup.sh` and path rules. Every path the engine uses is relative to that home | Open |
-| E1.2 | `factory onboard <repo>`: clone the repo, create its config folder, check its credentials, and print a readiness checklist (fast checks, tests, CI, branch protection, `AGENTS.md`, `CONTEXT.md`). Replaces the old registry wizard | Open |
-| E1.3 | `factory run <project>`: the script loop. One headless Claude Code run per stage, agents loaded from the factory and not from the project, all state on disk, safe to stop and restart | Open |
-| E1.4 | The engine does every push and every GitHub call. Agent stages run without the GitHub token, in a clone with no production credentials | Open |
-| E1.5 | The project's `setup.sh` runs once per worktree, with the package manager's cache shared across jobs | Open |
-| E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open |
+| E1.1 | Factory home layout: registry, and per project a config folder with `checks.sh`, `setup.sh` and path rules. Every path the engine uses is relative to that home | Done. The registry is the `projects/` folder listing; each project records its repo in its `config.json` |
+| E1.2 | `factory onboard <repo>`: clone the repo, create its config folder, check its credentials, and print a readiness checklist (fast checks, tests, CI, branch protection, `AGENTS.md`, `CONTEXT.md`). Replaces the old registry wizard | Done: `factory/bin/factory onboard` |
+| E1.3 | `factory run <project>`: the script loop. One headless Claude Code run per stage, agents loaded from the factory and not from the project, all state on disk, safe to stop and restart | Done in code and tested end to end with stand-ins for GitHub and the model (`factory/test_run.py`). Not yet run with a real model |
+| E1.4 | The engine does every push and every GitHub call. Agent stages run without the GitHub token, in a clone with no production credentials | Done. Agent stages run with the token removed from their environment; as the same OS user, hard separation waits for the container (E6) |
+| E1.5 | The project's `setup.sh` runs once per worktree, with the package manager's cache shared across jobs | Done. The shared cache is the package manager's own store |
+| E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open. Needs the factory home, the project's token, a signed-in Claude Code CLI on the factory machine, and labelled issues |
 | **E2** | **Limits, the log, and feedback** | |
 | E2.1 | Per stage: wall-clock timeout, turn cap and USD budget, plus a stall kill when a stage has produced no output for some minutes. A breach sends the job to a person | Open |
 | E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Open |

@@ -54,14 +54,14 @@ ESCALATE if any of them fails, or if the change:
 
 In this project a human must also always see a change that:
 
-- belongs to an issue labeled `human-merge` (check with
-  `gh issue view <issue> --json labels`);
+- belongs to an issue labeled `human-merge` (the issue's labels are listed at
+  the top of `issue.md`);
 - rests on a spec that drops, narrows or weakens an acceptance criterion from
   the issue, even when intake or the spec writer had a good reason. Compare
   every criterion in `issue.md` with `spec.md` and `intake.md`'s Scope; a
   criterion turned into a follow-up counts as dropped. Say which one in For the
   human;
-- touches a file matching `sensitive_paths` in `factory/config.json`: the
+- touches a file matching `sensitive_paths` in the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout): the
   project's list of files where a mistake costs most. Dependency manifests and
   lockfiles are on it by default;
 - changes the factory or agent set-up: anything under `.claude/` or `factory/`;

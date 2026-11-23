@@ -48,7 +48,7 @@ is in the main checkout; your one file goes there.
 
 ## This project's hot spots
 
-- `sensitive_paths` in `factory/config.json` lists the files where a mistake
+- `sensitive_paths` in the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout) lists the files where a mistake
   costs most. Read every one the branch changes in full, not only the diff.
 - `AGENTS.md` (or `CLAUDE.md`) sets the project's security rules, such as where
   user input enters and what may be sent to a model. A change that breaks one

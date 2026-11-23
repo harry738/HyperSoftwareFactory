@@ -17,8 +17,8 @@ import proc  # binley: Windows process helpers, factory/bin/proc.py
 
 proc.setup()
 
-FACTORY = Path(__file__).resolve().parents[1]
-CONFIG = json.loads((FACTORY / "config.json").read_text())
+LAYOUT = proc.layout(__file__)  # central home, or the factory inside the project's repo
+CONFIG = json.loads(LAYOUT["config"].read_text())
 
 
 def die(msg):
@@ -30,11 +30,11 @@ def main(argv):
     if len(argv) != 1:
         die("usage: route <job-id>")
     job_id = argv[0]
-    job_bin = str(FACTORY / "bin" / "job")
+    job_bin = str(Path(__file__).resolve().parent / "job")
     res = subprocess.run([sys.executable, job_bin, "sync", job_id], capture_output=True, text=True)
     if res.returncode != 0:
         die(res.stderr.strip())
-    job = json.loads((FACTORY / "jobs" / job_id / "job.json").read_text())
+    job = json.loads((LAYOUT["jobs"] / job_id / "job.json").read_text())
     intake = job["intake"] or die(f"{job_id} has no intake.md")
     risk = CONFIG["routing"].get(intake["risk"]) or die(
         f"risk {intake['risk']!r} isn't in config.json routing ({', '.join(CONFIG['routing'])})")

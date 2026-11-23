@@ -3,6 +3,7 @@
   "max_rounds": 3,
   "base_branch": "main",
   "merge_method": "merge",
+  "unattended_merge": false,
   "labels": {
     "queue": "factory",
     "needs_info": "factory:needs-info",

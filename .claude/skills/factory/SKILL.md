@@ -25,7 +25,7 @@ intake (fable)     → ACCEPT (scope possibly changed) | NEEDS-INFO | REJECT, po
 route (script)     → reviewers + models from risk/surfaces via config.json
 worktree           → factory/<job-id> from origin/<base>
 spec-writer (fable) → spec.md
-builder (opus)     → commits; the first push opens a draft PR "Closes #<n>"
+builder (opus)     → commits; `job advance <id> gate` pushes and opens a draft PR "Closes #<n>"
 gate (script)      → checks.sh; FAIL → builder gets the log, no reviewers spawned
 reviewers (routed) → parallel, WAIT FOR ALL; CHANGES → builder → gate → reviewers
 approver (fable)   → APPROVE: sync origin/<base>, gate, gh pr merge
@@ -153,7 +153,10 @@ finished:
 - `APPROVE`: `factory/bin/job merge <id>`, run from the main checkout exactly
   like that, with no `cd` or `python` in front: that is the form the
   permission rules allow. It syncs the branch with the base, runs the gate again, pushes, and merges the PR, ending in `merged`. If any
-  of that fails it moves the job to `needs-human` and says why.
+  of that fails it moves the job to `needs-human` and says why. When
+  `unattended_merge` is off in `config.json` it refuses: run
+  `factory/bin/job advance <id> needs-human`, which marks the PR ready and
+  leaves the merge to a person.
 - `ESCALATE`: `factory/bin/job advance <id> needs-human`. It marks the PR ready,
   posts the decision on it and labels the issue `factory:needs-human`.
 

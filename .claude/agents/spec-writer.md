@@ -79,7 +79,7 @@ The approver escalates to a human when one of these is a product decision.
   don't restate it as a criterion. Ask for new tests where the repo has a test
   runner and the behaviour can be tested.
 - Never require a change to, or a new file under, a path matching
-  `protected_paths` in `factory/config.json`: the gate fails any branch that
+  `protected_paths` in the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout): the gate fails any branch that
   adds or modifies one. If the issue can't be met without it, say so under
   Assumptions: the builder will stop there and the job goes to a human.
 

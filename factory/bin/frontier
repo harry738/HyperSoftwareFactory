@@ -9,21 +9,24 @@ are all closed. Prints each issue it released. binley: not upstream.
 """
 
 import json
+import os
+import shlex
 import subprocess
 import sys
-from pathlib import Path
 
 import proc  # Windows process helpers, factory/bin/proc.py
 
 proc.setup()
 
-REPO = Path(__file__).resolve().parents[2]
-LABELS = json.loads((REPO / "factory" / "config.json").read_text())["labels"]
+LAYOUT = proc.layout(__file__)  # central home, or the factory inside the project's repo
+REPO = LAYOUT["repo"]
+LABELS = json.loads(LAYOUT["config"].read_text())["labels"]
+GH = shlex.split(os.environ.get("FACTORY_GH", "gh"))  # tests point this at a stand-in
 QUEUE, READY = LABELS["queue"], LABELS["ready"]
 
 
 def gh(*args):
-    res = subprocess.run(["gh", *args], cwd=REPO, capture_output=True, text=True)
+    res = subprocess.run([*GH, *args], cwd=REPO, capture_output=True, text=True)
     if res.returncode != 0:
         sys.exit(f"frontier: `gh {' '.join(args)}` failed: {res.stderr.strip()}")
     return res.stdout
