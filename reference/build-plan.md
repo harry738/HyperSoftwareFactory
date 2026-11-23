@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v3 (2026-11-22) — replaces the phase tables formerly in section 4 of the reference architecture, and accounts for the working factory imported from the Binley pilot.
+**Version:** v3.1 (2026-11-23) — adds backlog items from the 23 Nov Binley run (18 jobs, $90.15). v3 (2026-11-22) replaced the phase tables formerly in section 4 of the reference architecture, and accounts for the working factory imported from the Binley pilot.
 
 ---
 
@@ -61,6 +61,9 @@ Mostly the pilot report's own recommendations.
 | S1.6 | Verify the prices in `factory/config.json` against the published price list | Pilot rec. 10 |
 | S1.7 | Per-job caps enforced by `factory/bin/job`: wall-clock timeout and USD budget in `config.json`; breach moves the job to `needs-human` | Architecture §2.5 |
 | S1.8 | Branch protection on the project's base branch: PR required, gate status required | Architecture §2.4 |
+| S1.9 | The gate runs tests with the build cache bypassed (`TURBO_FORCE=true` or `--force`), or with a cache keyed per job. A cached PASS is not evidence: one PR passed on a cache replay of tests that failed on a fresh run | Binley run 23 Nov |
+| S1.10 | The builder copies the route label (`human-merge`) from the issue to the PR, so merge rules that check the PR see it. Every route G PR needed it added by hand | Binley run 23 Nov |
+| S1.11 | `job sync` detects a PR merged by hand and moves the job to `merged` (today only `job queue` does); `job queue` removes merged worktrees in the background instead of blocking for minutes | Binley run 23 Nov |
 
 **Exit:** ten real issues through the factory, including at least one gate failure, one CHANGES round, and one escalation. For each: cycle time, cost, whether you had to edit the PR (*human-edit rate*), and whether it was later reverted or hot-fixed (*escape rate*).
 
@@ -83,6 +86,9 @@ Mostly the pilot report's own recommendations.
 | S3.3 | Reviewers cannot change the branch: after review, the script verifies the worktree's HEAD and tree are unchanged, and fails the round if not | Architecture §2.4 |
 | S3.4 | Spec-only tester: an agent that writes tests from the spec's acceptance criteria and public interface, without the diff. Requires the spec template to state the public interface | Architecture §2.2, §2.4 |
 | S3.5 | Run an issue with a security surface, so the security reviewer is exercised | Pilot rec. 9 |
+| S3.6 | The runner checks that the review file exists before accepting a reviewer's reply, and reviewer prompts end with "write the file, then reply". Reviewers replied without writing it in four of 18 jobs | Binley run 23 Nov |
+| S3.7 | SQL checklist for the security reviewer: schema-qualify every name in triggers and definer functions, pin `search_path` with `pg_temp` last, and test as the app role with shadowing temp tables. Round 1 missed a temp-table bypass of ledger rules; round 2 caught it | Binley run 23 Nov |
+| S3.8 | CI parity: the spec writer checks that the environment has what the spec pins (wheels, database extensions, runtime versions), and the builder is told CI is slower (explicit hook timeouts) and may run a different OS or Python. Two of 18 jobs blocked on this before writing code | Binley run 23 Nov |
 
 **Exit:** on twenty jobs, compare reviewer verdicts with your own review. Proceed only if the reviewers miss fewer than one in ten of the issues you found.
 
@@ -91,10 +97,11 @@ Mostly the pilot report's own recommendations.
 | ID | Task | Depends on |
 |---|---|---|
 | S4.1 | Make the Windows job lock wait instead of failing, and kill child processes when a script is stopped | Pilot rec. 5 |
-| S4.2 | Raise `concurrency` to 2, then 3, only after S4.1 | S4.1 |
+| S4.2 | Raise `concurrency` to 2, then 3, only after S4.1. Start with jobs on disjoint packages. On 23 Nov, at `concurrency` 1, a job took 15 minutes to 1.5 hours, mostly waiting on agents | S4.1 |
 | S4.3 | Run the factory from a dedicated clone under an account or machine that holds no deploy secrets and no other projects' credentials | — |
 | S4.4 | Daily USD budget per project, enforced by the scripts | S1.7 |
 | S4.5 | Decide whether to move runs to ephemeral CI runners. Do it if the factory must run unattended overnight or S4.3 proves too weak | S4.3 |
+| S4.6 | After any merge, re-check open PRs for conflicts and queue a merge-main round automatically; reduce shared hot-spot files (for example one `AGENTS.md` entry per package). One shared line cost three rounds | Binley run 23 Nov |
 
 **Exit:** twenty jobs at `concurrency` 3 with no lock crash, no port clash, and no orphaned process; a deliberately runaway job is stopped by its budget.
 
@@ -108,6 +115,7 @@ The microVM, service-mesh and credential-gateway designs in architecture §2.5 a
 | S5.2 | LOW tier merges unattended after gate, reviews and approver all pass | S5.1, S3 exit |
 | S5.3 | HIGH tier always stops for you, whatever the approver says | S5.1 |
 | S5.4 | Deploy step with a post-deploy health check and automatic rollback to the previous release | S5.1 |
+| S5.5 | The approver writes a machine-readable `label-only: yes/no` line, so merge rules don't have to read its prose | Binley run 23 Nov |
 
 **Exit:** twenty LOW-tier jobs merged unattended with zero escapes, and one rehearsed rollback.
 
