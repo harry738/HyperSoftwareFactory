@@ -19,7 +19,8 @@
     "queue": "factory",
     "needs_info": "factory:needs-info",
     "needs_human": "factory:needs-human",
-    "ready": "ready-for-agent"
+    "ready": "ready-for-agent",
+    "human_merge": "human-merge"
   },
   "routing": {
     "low": {
@@ -60,6 +61,13 @@
   "sensitive_reviewers": {
     "code": "sonnet",
     "security": "opus"
+  },
+  "risk_paths": {
+    "low": [
+      "*.md",
+      "docs/*"
+    ],
+    "high": []
   },
   "ports": {
     "base": 5100,

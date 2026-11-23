@@ -142,7 +142,9 @@ finished:
 - `advance` refuses a review with no `## Evidence` citing a `path:line`: resume
   that reviewer once with the refusal. If it refuses again, stop this job and tell the user.
 
-- all PASS: `factory/bin/job advance <id> approve`, then spawn `approver` with
+- all PASS: `factory/bin/job advance <id> approve`. If it prints `always-stop`, a
+  rule sends the job to a person: run `factory/bin/job advance <id> needs-human`
+  and spawn no approver. Otherwise spawn `approver` with
   `<header> PR: #<pr>. Final round: <N>.`
 - any CHANGES: `factory/bin/job advance <id> build` (or `needs-human` when it
   refuses because this was the last round), then resume the builder:
@@ -161,7 +163,9 @@ finished:
   posts the decision on it and labels the issue `factory:needs-human`.
 
 A job is finished for this run when it reaches `merged`, `rejected`,
-`needs-info` or `needs-human`.
+`needs-info` or `needs-human`. With `council` set in `config.json` a job on its
+way to `needs-human` stops in `council` first: run
+`factory/bin/job advance <id> needs-human` again to pass it through.
 
 A person can merge a job's PR by hand at any stage. `factory/bin/job queue`
 then moves the job to `merged`; stop any agents still running for it.

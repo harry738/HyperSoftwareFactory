@@ -281,12 +281,16 @@ def step(j):
     if stage == "review":
         return review(j)
     if stage == "approve":
+        if j.get("always_stop"):  # a rule sends it to a person: no approver is asked
+            return advance(j, "needs-human")
         if not run_agent(j, "approver", f"PR: #{j['pr']}. Final round: {j['round']}."):
             return False
         if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True):
             stage = "merging"
         else:  # ESCALATE, or approved with unattended merge off: a person merges
             return advance(j, "needs-human")
+    if stage == "council":  # the Dev council's slot (build plan F1). Nothing sits in it yet: pass straight through
+        return advance(j, "needs-human")
     if stage == "merging":
         ok, out = job("merge", j["id"])
         print(out, flush=True)

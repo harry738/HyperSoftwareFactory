@@ -97,6 +97,8 @@ elif agent == "spec-writer":
     (folder / "spec.md").write_text("# Add a file\n\n## Acceptance criteria\n1. feature.txt exists\n")
 elif agent == "builder":
     (worktree / "feature.txt").write_text("issue %d round %d\n" % (job["issue"], job["round"]))
+    if os.environ.get("FAKE_TOUCH"):
+        (worktree / os.environ["FAKE_TOUCH"]).write_text("{}\n")
     git = ["git", "-C", str(worktree), "-c", "user.email=b@example.test", "-c", "user.name=builder"]
     subprocess.run(git + ["add", "-A"], check=True)
     subprocess.run(git + ["commit", "-q", "-m", "Add feature"], check=True)
@@ -114,7 +116,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -147,8 +149,17 @@ def config(**changes):
     return c
 
 
-def label(n):
-    gh_state(lambda s: s["issues"][n - 1].update(labels=["factory"]))
+def label(n, *more):
+    gh_state(lambda s: s["issues"][n - 1].update(labels=["factory", *more]))
+
+
+def stages_run(n):
+    """The agents that ran for issue n, in order."""
+    return [c["agent"] for c in calls() if f"Issue: #{n}." in c["args"][c["args"].index("-p") + 1]]
+
+
+def events(n):
+    return [e for e in map(json.loads, (JOBS / "events.jsonl").read_text().splitlines()) if e["issue"] == n]
 
 
 def job(n):
@@ -171,7 +182,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 6)]
+               "state": "OPEN", "comments": []} for n in range(1, 9)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -217,7 +228,7 @@ def test_run_takes_an_issue_to_a_pr_waiting_for_the_operator():
     assert not any(c["token"] for c in made), "an agent stage saw the GitHub token"
     assert made[0]["cwd"].endswith("/work/demo/repo") and made[2]["cwd"] == j["worktree"], (made[0]["cwd"], made[2]["cwd"])
     reviewer = made[3]["args"]
-    assert reviewer[reviewer.index("--model") + 1] == "haiku"
+    assert reviewer[reviewer.index("--model") + 1] == "sonnet"  # intake said low, but no path rule matched: medium
     tools = reviewer[reviewer.index("--tools") + 1:reviewer.index("--allowedTools")]
     assert tools == ["Read", "Grep", "Glob", "Bash", "Write"], tools  # the reviewer's own tools and no others
     assert reviewer[reviewer.index("--max-turns") + 1] == "300" and reviewer[reviewer.index("--max-budget-usd") + 1] == "5"
@@ -230,7 +241,7 @@ def test_every_stage_change_is_in_the_event_log():
     assert [r["to"] for r in rows] == ["intake", "spec", "build", "gate", "review", "approve", "needs-human"], rows
     assert rows[0]["from"] is None and rows[-1]["from"] == "approve"
     last = rows[-1]
-    assert last["decision"] == "APPROVE" and last["cost_usd"] == 0.05 and last["pr"] == 10 and last["risk"] == "low", last
+    assert last["decision"] == "APPROVE" and last["cost_usd"] == 0.05 and last["pr"] == 10 and last["risk"] == "medium", last
     assert last["gate"] == "PASS" and last["reviews"] == {"code": "PASS"}, last
 
 
@@ -302,6 +313,39 @@ def test_a_job_that_spends_its_budget_is_handed_to_a_person():
     j = job(5)
     assert j["stage"] == "needs-human" and j["stopped_in"] == "build" and j["cost_usd"] == 0.02, j
     assert "of its $0.02 budget" in gh_state()["issues"][4]["comments"][-1]
+
+
+def test_a_human_merge_label_stops_the_job_before_the_approver():
+    config(job_budget_usd=15)
+    label(6, "human-merge")
+    assert factory("run", "demo").returncode == 0
+    j = job(6)
+    assert j["stage"] == "needs-human" and j["always_stop"] == ["the issue is labelled `human-merge`"], j
+    assert stages_run(6) == ["intake", "spec-writer", "builder", "reviewer-code"], stages_run(6)  # no approver: the rule decided
+    pr = gh_state()["prs"][-1]
+    assert "always-stop rule" in pr["comments"][-1]["body"] and pr["isDraft"] is False, pr
+    last = events(6)[-1]
+    assert last["to"] == "needs-human" and last["always_stop"] and last["decision"] == "ESCALATE", last
+
+
+def test_a_sensitive_path_raises_the_risk_and_stops_the_job():
+    label(7)
+    assert factory("run", "demo", FAKE_TOUCH="package.json").returncode == 0
+    j = job(7)
+    assert j["risk"] == "high" and j["intake"]["risk"] == "low", j  # the paths raise the tier; intake cannot lower it
+    assert j["agents"]["reviewers"] == {"code": "sonnet", "security": "opus"}, j["agents"]
+    assert j["stage"] == "needs-human" and "package.json" in j["always_stop"][0], j
+    assert "approver" not in stages_run(7)
+
+
+def test_low_risk_paths_and_the_council_slot():
+    config(risk_paths={"low": ["*.txt"], "high": []}, council={})
+    label(8)
+    assert factory("run", "demo").returncode == 0
+    j = job(8)
+    assert j["risk"] == "low" and j["agents"]["reviewers"] == {"code": "haiku"}, j  # every changed file is on a low path
+    assert [e["to"] for e in events(8)][-3:] == ["approve", "council", "needs-human"]  # the Dev council's slot, empty for now
+    assert j["stage"] == "needs-human" and "approver" in stages_run(8)
 
 
 def test_status_lists_every_job():

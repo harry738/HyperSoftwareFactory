@@ -100,9 +100,9 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E2.3 | Event log: one append-only typed row per stage transition, per project, with cost, time and outcome | Done: `events.jsonl` in the project job folder, written by `job` on every stage change. Per-stage cost and time are in each job folder `usage.jsonl` |
 | E2.4 | Feedback loop: at the start of each run, a "changes requested" review or a failed CI check on a job's PR starts the next build round with that feedback, inside the three-round cap | Done, with one change: see the note under this table |
 | **E3** | **Rules in scripts** | |
-| E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Open |
-| E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Open |
-| E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Open |
+| E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
+| E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
+| E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |

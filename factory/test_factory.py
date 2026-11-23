@@ -215,6 +215,7 @@ def test_review_without_evidence_is_refused():  # hardening: no 8-second reviews
     j = {"id": "007-evidence", "issue": 7, "stage": "review", "round": 1, "round_limit": 3, "pr": 1,
          "worktree": str(TMP), "intake": None, "gate": None, "agents": {"reviewers": {"code": "haiku"}}, "reviews": {}}
     job.cost_usd = lambda j: 0.0
+    job.always_stop = lambda j: []  # no GitHub or git here; the always-stop rules have their own test in test_run.py
     assert job.sync(dict(j))["reviews"] == {"code": "no-evidence"}
     try:
         job.advance(job.sync(dict(j)), "approve")

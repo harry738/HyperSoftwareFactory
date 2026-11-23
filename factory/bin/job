@@ -61,6 +61,7 @@ TRANSITIONS = {
     "approve": {"merging", "needs-human"},
     "merging": {"needs-human"},
     "needs-human": {"build", "rejected"},
+    "council": {"needs-human"},  # the Dev council's slot; build plan F1 adds its merge and rewrite moves
 }
 TERMINAL = {"merged", "rejected"}
 # Any unfinished job can move to merged once its PR is merged on GitHub,
@@ -145,7 +146,8 @@ def log_event(job, old):
     row = {"at": now(), "job": job["id"], "issue": job.get("issue"), "from": old, "to": job["stage"],
            "round": job["round"], "cost_usd": job.get("cost_usd"),
            "minutes": int((datetime.now(timezone.utc) - start).total_seconds() // 60) if start else None,
-           "risk": (job.get("intake") or {}).get("risk"), "gate": job.get("gate"), "reviews": job.get("reviews"),
+           "risk": job.get("risk") or (job.get("intake") or {}).get("risk"), "always_stop": job.get("always_stop"),
+           "gate": job.get("gate"), "reviews": job.get("reviews"),
            "pr": job.get("pr"), "decision": first_line(job_dir(job["id"]) / "decision.md"),
            "stopped_in": job.get("stopped_in")}
     with (JOBS / "events.jsonl").open("a") as f:
@@ -199,10 +201,46 @@ def section(path, heading):
     return m.group(1).strip() if m else None
 
 
+def changed_files(job):
+    return git(job, "diff", "--name-only", f"origin/{BASE}...HEAD").stdout.split()
+
+
+def matches(name, patterns):
+    return any(fnmatch.fnmatch(name, p) for p in patterns)  # fnmatch: `*` crosses `/`
+
+
 def sensitive_changes(job):
-    """Files the branch changes that match config.json `sensitive_paths` (fnmatch, `*` crosses `/`)."""
-    names = git(job, "diff", "--name-only", f"origin/{BASE}...HEAD").stdout.split()
-    return [n for n in names if any(fnmatch.fnmatch(n, p) for p in CONFIG["sensitive_paths"])]
+    """Files the branch changes that match config.json `sensitive_paths`."""
+    return [n for n in changed_files(job) if matches(n, CONFIG["sensitive_paths"])]
+
+
+RISKS = ["low", "medium", "high"]
+
+
+def risk_floor(names):
+    """The lowest risk tier the changed paths allow. Any sensitive or `risk_paths.high` file
+    makes it high; it is low only when every file is on a `risk_paths.low` path; otherwise medium."""
+    paths = CONFIG.get("risk_paths", {})
+    if any(matches(n, [*paths.get("high", []), *CONFIG.get("sensitive_paths", [])]) for n in names):
+        return "high"
+    return "low" if names and all(matches(n, paths.get("low", [])) for n in names) else "medium"
+
+
+def always_stop(job):
+    """Why this job must go to a person whatever the reviews, the approver or a council say.
+    Checked here, by a script, so no model is asked first and none can be talked out of it."""
+    label_name = LABELS.get("human_merge", "human-merge")
+    labels = {l["name"] for l in gh_json("issue", "view", str(job["issue"]), "--json", "labels")["labels"]}
+    touched = sensitive_changes(job)
+    return ([f"the issue is labelled `{label_name}`"] if label_name in labels else []) + (
+        ["it changes sensitive paths: " + ", ".join(touched)] if touched else [])
+
+
+def decided_this_round(job):
+    """True when decision.md was written after this round's reviews, so an approver made it."""
+    decision = job_dir(job["id"]) / "decision.md"
+    newest = max((p.stat().st_mtime for p in round_dir(job).glob("*")), default=0)
+    return decision.exists() and decision.stat().st_mtime > newest
 
 
 def round_dir(job, n=None):
@@ -529,6 +567,13 @@ def advance(job, stage):
                 "checks.md was written for another commit; run the gate again")
         if stage == "review":
             require(h.get("GATE") == "PASS", "the gate didn't pass")
+            # The risk tier comes from the changed paths; intake may have raised it, and cannot lower it.
+            rated = (job.get("intake") or {}).get("risk")
+            rated = rated if rated in RISKS else "medium"
+            job["risk"] = max(rated, risk_floor(changed_files(job)), key=RISKS.index)
+            if job["risk"] != rated:
+                job["agents"]["reviewers"].update(CONFIG["routing"][job["risk"]])
+                print(f"{job['id']}: intake rated this {rated}; its changed paths make it {job['risk']}")
             touched = sensitive_changes(job)
             if touched:  # binley: risk by path, whatever intake rated it
                 job["agents"]["reviewers"].update(CONFIG["sensitive_reviewers"])
@@ -557,6 +602,9 @@ def advance(job, stage):
                 for r in blocked))
         elif stage == "approve":
             require(not changes, f"reviews want CHANGES: {', '.join(changes)}")
+            job["always_stop"] = always_stop(job)
+            if job["always_stop"]:
+                print(f"{job['id']}: always-stop: {'; '.join(job['always_stop'])}")
         else:
             require(changes, "every review passed")
             last = job["round"] >= job["round_limit"]
@@ -571,9 +619,16 @@ def advance(job, stage):
     elif old == "approve":
         line = first_line(d / "decision.md")
         unattended = CONFIG.get("unattended_merge", True)  # false: every approved job waits for a person to merge
+        stops = job.get("always_stop") or []
         if stage == "merging":
+            require(not stops, f"an always-stop rule applies ({'; '.join(stops)}): go to needs-human")
             require(line == "APPROVE", f"decision.md starts with {line!r}, not APPROVE")
             require(unattended, "unattended_merge is off in config.json: go to needs-human")
+        elif stops:
+            if not decided_this_round(job):  # no approver was asked: the rule is the decision
+                escalate(job, "An always-stop rule applies, so this needs you whatever the reviews say:\n\n"
+                         + "\n".join(f"- {s}" for s in stops)
+                         + f"\n\nEvery review passed in round {job['round']}. No approver was asked.")
         else:
             require(line == "ESCALATE" or (line == "APPROVE" and not unattended),
                     f"decision.md starts with {line!r}, not ESCALATE")
@@ -585,6 +640,9 @@ def advance(job, stage):
         job["round_limit"] = job["round"] + CONFIG["max_rounds"]
         next_round(job)
         label("issue", job["issue"], remove=LABELS["needs_human"])
+
+    if stage == "needs-human" and old != "council" and "council" in CONFIG:
+        stage = "council"  # the Dev council sees the job before a person does
 
     if stage == "needs-human":
         hand_to_human(job)
