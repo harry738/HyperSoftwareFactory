@@ -15,13 +15,13 @@ The rest of this section is the state before that merge, kept for the record.
   1. Merge PR #24 by hand on GitHub. The next `factory/bin/job queue` records the job as `merged` and removes the `factory:needs-human` label. This is safe because the head commit already passed the gate.
   2. Give feedback with `factory/bin/job feedback 23`, which starts a new build round and runs the whole pipeline again, including the merge with the fixed gate. About 30 more minutes and a few dollars.
 
-Run date: 21 November 2026, all times UTC. Run from `E:\Documents\Claude\Projects\Binley-factory` on `factory-pilot`. All eight factory agent types and the `factory` skill loaded in this clone.
+Run date: 21 November 2026, all times UTC. Run from `<projects>\Binley-factory` on `factory-pilot`. All eight factory agent types and the `factory` skill loaded in this clone.
 
 ## Outcome
 | | |
 |---|---|
 | Final job stage | `merged` (via `needs-human`: the first merge gate failed on a Windows fault, then the PR was merged by hand) |
-| PR | #24, https://github.com/harry738/Binley/pull/24, merged 22:24:44 UTC, base `factory-pilot`, merge commit `707d6c1` |
+| PR | #24 in the Binley repo (private), merged 22:24:44 UTC, base `factory-pilot`, merge commit `707d6c1` |
 | Merged into `factory-pilot` | Yes, by hand with `gh pr merge` after a passing merge gate, not by `factory/bin/job merge` |
 | Issue #23 | Open (not auto-closed: `factory-pilot` is not the default branch), label `factory`, two intake comments (one is a duplicate, see Problems) |
 

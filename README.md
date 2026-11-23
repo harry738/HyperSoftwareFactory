@@ -16,6 +16,7 @@ The factory takes GitHub issues today, and aims to take raw signals (social inta
 
 - **Install into a project:** copy `factory/` and `.claude/` into the target repo, then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Intake reads what belongs in the project from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
 - **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
+- **Every project in one dashboard:** from this repo, `python scripts/factory-dashboard.py`, then open http://localhost:8020/. One tab and one board per project in `config/projects.yaml`; each tab shows how many jobs are running and how many wait on you. A project's board needs `path:` set to its local checkout (the one with `factory/` in it).
 - **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
 - **Evidence so far:** 11 jobs on Binley by 22 Nov 2026. The pilot was merged by hand after a Windows gate fault; in the first overnight run the factory merged one PR itself, sent one job back for a CHANGES round, and escalated five to a human, as designed. No job has failed the gate yet. See the [pilot report](reference/binley/pilot-report-2026-11-21.md).
 
@@ -54,7 +55,7 @@ Parallel builders within one spec, council gates, Prometheus metrics, microVM is
 | [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
 | [`reference/binley/`](reference/binley/) | First real use: pilot report, bootstrap prompt, how to run it on Windows |
 | [`reference/`](reference/) | Target architecture, build plan, planned integrations |
-| [`config/`](config/), [`scripts/`](scripts/) | Central project registry (`projects.yaml`) and its onboarding script |
+| [`config/`](config/), [`scripts/`](scripts/) | Project registry (`projects.yaml`, local and gitignored; `projects.example.yaml` shows its shape) and its onboarding script |
 
 ## Project registry
 
@@ -63,7 +64,7 @@ pip install -r requirements.txt
 python scripts/factory-onboard.py --interactive
 ```
 
-The script adds a project to [`config/projects.yaml`](config/projects.yaml) and writes draft roadmap files to `onboarding/<slug>/` for you to review and push to the project repo. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory does not read this registry yet; it is installed per project.
+The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files to `onboarding/<slug>/` for you to review and push to the project repo. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
 
 ## Target architecture
 

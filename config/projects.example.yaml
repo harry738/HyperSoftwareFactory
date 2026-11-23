@@ -1,0 +1,16 @@
+# Software Factory — Project Configuration (example)
+# The real registry is config/projects.yaml. It is gitignored because this repo
+# is public and the registry names your projects and paths on your machine.
+# `python scripts/factory-onboard.py --interactive` creates it; or copy this file.
+
+projects:
+  alpha:
+    name: "Project Alpha"
+    repo: "your-org/project-alpha"
+    roadmap: "docs/product/roadmap.yaml"
+    inbox: "docs/product/roadmap-inbox/"
+    council_enabled: true   # true = Full Council at gates 2/3; false = Chair-only Fast Council
+    sprint_cadence: weekly
+    alert_channel: "telegram:[YOUR_TELEGRAM_CHAT_ID]"
+    path: "/path/to/project-alpha"   # local checkout with factory/ in it; read by scripts/factory-dashboard.py
+    onboarded: "2026-01-01"

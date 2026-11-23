@@ -4,7 +4,7 @@
 **Status:** Target design. The working factory in `factory/` and `.claude/` implements part of it (issue intake, spec, build, gate, review, approve). The [build plan](build-plan.md) maps each section to what exists and what is next.
 **Source:** Synthesis of Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), arXiv meta-engineering harness, Dexter Horthy — State of Software Factories / Slop Bench (Agentic AI Foundation, 2026-10)
 
-> **Scope.** Sections 1–5 describe the generic factory. Section 6 holds notes specific to the first deployment (HTS, the Hyper Trading System), including components that live in that repo and not here: Buzz relay, Watchdog Bot, `council.py`, the HTS metrics collectors.
+> **Scope.** Sections 1–5 describe the generic factory. Section 6 holds notes specific to the first deployment, including components that live in that project's repo and not here: its notification relay, watchdog bot, `council.py` and metrics collectors.
 >
 > **Unverified claims.** These came from talks and posts and have not been checked against primary sources: the SlopCodeBench 14.8% figure, the "~100 TypeScript rules" lint set, the Antigravity reviewer pattern, and every install command in section 5. Verify each before relying on it.
 
@@ -117,7 +117,7 @@ All signals that enter the factory:
 **Trust boundary:** everything from outside (social posts, emails, web pages, issue text from strangers) is untrusted input and may contain instructions aimed at the agents. Raw external content is summarised into a fixed schema by a model call that has no tools. Only that summary reaches any agent that can write code, mint work, or call tools. Manual signals from the operator are the only trusted source.
 
 **Triage rules:**
-- Content is routed to a project by the slug in `config/projects.yaml` (for example trading content → `hts`)  
+- Content is routed to a project by the slug in `config/projects.yaml` (for example `alpha`)  
 - Bug → Poteto `bug-fix` playbook (investigation before fix)
 - Alert → Ops playbook (diagnose before resolve)
 - Unclear → Council fast mode (Chair only, 2 min verdict)
@@ -301,7 +301,7 @@ New signals → Intake
 
 ## 3. Factory Observability
 
-Borrowing from HTS's monitoring dashboard pattern (monitor/collector, metrics_log, health endpoints):
+Borrowing from the first project's monitoring dashboard pattern (monitor/collector, metrics_log, health endpoints):
 
 ### 3.1 Factory Metrics Schema
 
@@ -311,12 +311,12 @@ Drizzle table `factory_events`. It is **append-only**: one row per stage transit
 export const factoryEvents = pgTable("factory_events", {
   id: serial("id").primaryKey(),
   // Core identifiers
-  project: varchar("project", { length: 32 }).notNull(),  // "hts" | "hyperos" | "propinfo"
+  project: varchar("project", { length: 32 }).notNull(),  // "alpha" | "beta" | "gamma"
   stage: varchar("stage", { length: 16 }).notNull(),  // "intake" | "triage" | "gate1" | "spec" | "gate2" | "build" | "verify" | "gate3" | "deploy" | "monitor" | "learn"
   status: varchar("status", { length: 16 }).notNull(),  // "entered" | "running" | "passed" | "failed" | "blocked"
 
   // Work item tracking
-  workItemId: varchar("work_item_id", { length: 64 }).notNull(),  // stable from intake onward, e.g. "hts#412"
+  workItemId: varchar("work_item_id", { length: 64 }).notNull(),  // stable from intake onward, e.g. "alpha#412"
   signalId: varchar("signal_id", { length: 32 }),  // source reference
   rmNumber: varchar("rm_number", { length: 8 }),  // RM-XXXX
   prNumber: integer("pr_number"),
@@ -349,38 +349,38 @@ export const factoryEvents = pgTable("factory_events", {
 
 ### 3.2 Factory Metrics
 
-Exposed as Prometheus-style metrics (same pattern as HTS collectors):
+Exposed as Prometheus-style metrics (same pattern as the first project's collectors):
 
 ```
 # Per-stage counters
-factory_stage_entered{project="hts",stage="intake"} 47
-factory_stage_completed{project="hts",stage="build",status="passed"} 42
-factory_stage_completed{project="hts",stage="build",status="failed"} 5
+factory_stage_entered{project="alpha",stage="intake"} 47
+factory_stage_completed{project="alpha",stage="build",status="passed"} 42
+factory_stage_completed{project="alpha",stage="build",status="failed"} 5
 
 # Timing histograms (bucketed)
-factory_stage_duration_seconds{project="hts",stage="intake"}_bucket{le="60"} 45
-factory_stage_duration_seconds{project="hts",stage="build"}_bucket{le="3600"} 30
+factory_stage_duration_seconds{project="alpha",stage="intake"}_bucket{le="60"} 45
+factory_stage_duration_seconds{project="alpha",stage="build"}_bucket{le="3600"} 30
 
 # Cost metrics
-factory_llm_cost_usd_total{project="hts",stage="build"} 123.45
-factory_stage_cost_usd_total{project="hts",stage="council"} 45.67
+factory_llm_cost_usd_total{project="alpha",stage="build"} 123.45
+factory_stage_cost_usd_total{project="alpha",stage="council"} 45.67
 
 # Cycle time (signal to deploy)
-factory_cycle_time_seconds{project="hts"} 86400
+factory_cycle_time_seconds{project="alpha"} 86400
 
 # Current WIP by stage
-factory_wip{project="hts",stage="build"} 3
-factory_wip{project="hts",stage="verify"} 2
+factory_wip{project="alpha",stage="build"} 3
+factory_wip{project="alpha",stage="verify"} 2
 
 # Maintainability (anti-slop tracking)
-factory_complexity_delta{project="hts"} 0.02  # avg complexity increase per PR
-factory_complexity_flag_rate{project="hts"} 0.12  # fraction of PRs flagged
-factory_review_evidence_rate{project="hts"} 0.95  # fraction of verifications with evidence
+factory_complexity_delta{project="alpha"} 0.02  # avg complexity increase per PR
+factory_complexity_flag_rate{project="alpha"} 0.12  # fraction of PRs flagged
+factory_review_evidence_rate{project="alpha"} 0.95  # fraction of verifications with evidence
 ```
 
 ### 3.3 Health Endpoints
 
-Same pattern as HTS `/api/health.*`:
+Same pattern as the first project's `/api/health.*`:
 
 | Endpoint | What it shows |
 |---|---|
@@ -414,7 +414,7 @@ RM-0549 │ Research Evidence Module │ Tier 1
 
 ### 3.5 Alerting
 
-Same pattern as HTS Watchdog Bot — events that trigger alerts:
+Same pattern as the first project's watchdog bot — events that trigger alerts:
 
 | Event | Severity | Action |
 |---|---|---|
@@ -428,7 +428,7 @@ Same pattern as HTS Watchdog Bot — events that trigger alerts:
 | Maintainability complexity delta > 0.5 | 🟠 High | PR blocked, architecture review needed |
 | Any verifier emits PASS without evidence | 🔴 Critical | Verification failure — agent gamed the gate |
 
-### 3.6 Dashboard Layout (borrowing from Infradeck & HTS)
+### 3.6 Dashboard Layout
 
 ```
 ┌────────────────────────────────────────────────────┐
@@ -510,17 +510,17 @@ echo "# Follow Modern Web Guidance for all web platform features." >> CLAUDE.md
 
 ## 6. Implementation Notes
 
-### HTS Borrows
+### Borrowed from the first project
 
-This section is specific to the HTS deployment. The factory reuses these HTS patterns, which live in the HTS repo:
+This section is specific to the first deployment. The factory reuses these patterns, which live in that project's repo:
 
-| HTS Pattern | Factory Equivalent |
+| First-project pattern | Factory Equivalent |
 |---|---|
 | `metrics_log` table | `factory_events` table |
 | `collector.ts` (Prometheus metrics) | `FactoryMetricsCollector` |
 | `/api/health.*` endpoints | `/api/health.factory.*` |
 | Watchdog Bot alerting | Factory alert rules |
-| Buzz relay dispatch (cron/notifications) | Factory event dispatch |
+| Relay dispatch (cron/notifications) | Factory event dispatch |
 | Settings toggles (`gen_*` flags) | Factory feature toggles |
 | Product Council run script | Factory gate script (same council.py) |
 | Handover protocol | Spec + Build handover (same format) |
@@ -537,10 +537,7 @@ Generic (every project):
 5. **All secrets stay outside the sandbox** — credential injection pattern only.
 6. **Council verdicts are advisory to the operator** — the operator may override with a documented mitigation. A Council can never approve a HIGH-risk change on its own.
 
-HTS only:
-
-7. **JEV stays shadow-only** — no gating until calibration holds.
-8. **No live capital changes** from the autonomous factory — deploy gates route these to the operator.
+Project-specific constraints live in each project's own repo, not here.
 
 ---
 
