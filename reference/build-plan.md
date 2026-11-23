@@ -61,6 +61,7 @@ Mostly the pilot report's own recommendations.
 | S1.6 | Verify the prices in `factory/config.json` against the published price list | Pilot rec. 10 |
 | S1.7 | Per-job caps enforced by `factory/bin/job`: wall-clock timeout and USD budget in `config.json`; breach moves the job to `needs-human` | Architecture §2.5 |
 | S1.8 | Branch protection on the project's base branch: PR required, gate status required | Architecture §2.4 |
+| S1.12 | Port Binley's newer factory hardening back here before any reinstall: `job`, `gate` (checks-passed marker, lock-wait timing), `frontier`, `checks.sh`, `config.json`, the test file, seven agents and the `factory` skill all differ. Copying this repo over Binley today would roll that hardening back | Binley run 23 Nov |
 
 **Exit:** ten real issues through the factory, including at least one gate failure, one CHANGES round, and one escalation. For each: cycle time, cost, whether you had to edit the PR (*human-edit rate*), and whether it was later reverted or hot-fixed (*escape rate*).
 
