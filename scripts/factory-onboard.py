@@ -8,13 +8,14 @@ Usage:
 
 What it does:
     1. Adds the project to config/projects.yaml (gitignored: it stays on this machine).
-    2. Writes draft roadmap files to onboarding/<slug>/ for you to review
+    2. Writes draft roadmap and README files to onboarding/<slug>/ for you to review
        and push to the project repo. It does NOT push anything itself.
 
 Requires PyYAML (pip install -r requirements.txt) and, for the repo check,
 an authenticated GitHub CLI (`gh auth login`).
 """
 import argparse, re, subprocess, sys
+from string import Template
 from datetime import date
 from pathlib import Path
 
@@ -27,6 +28,7 @@ CONFIG_HEADER = (
     "# Add projects with `python scripts/factory-onboard.py --interactive`\n"
     "# Or edit this file directly.\n\n"
 )
+README_TEMPLATE = FACTORY_ROOT / "config" / "README.template.md"
 ROADMAP_PATH = "docs/product/roadmap.yaml"
 INBOX_PATH = "docs/product/roadmap-inbox/"
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
@@ -129,6 +131,9 @@ HyperSoftwareFactory repo.
 - Roadmap: `{ROADMAP_PATH}` — managed by the factory pipeline.
 - Inbox: `{INBOX_PATH}` — build specs land here from the factory.
 """, encoding="utf-8")
+    # ponytail: safe_substitute leaves any unknown $word alone instead of raising
+    (out / "README.md").write_text(Template(README_TEMPLATE.read_text(encoding="utf-8")).safe_substitute(
+        name=name, slug=slug, repo=repo, onboarded=today), encoding="utf-8")
     return out
 
 def print_next_steps(slug, repo, out):
@@ -139,6 +144,7 @@ def print_next_steps(slug, repo, out):
     print(f"       roadmap.yaml   → {ROADMAP_PATH}")
     print(f"       roadmap-inbox/ → {INBOX_PATH}")
     print(f"       .factory.md    → .factory.md")
+    print(f"       README.md      → README.md (merge with any existing one; fill or delete each section)")
     print(f"  2. Nothing to commit here: config/projects.yaml is gitignored.\n")
 
 # ── Interactive wizard ──────────────────────────────────────────────────
