@@ -6,3 +6,6 @@ __pycache__/
 .env
 # Draft files from scripts/factory-onboard.py — they belong in the project repo, not here
 onboarding/
+# The project registry names real projects and local paths; this repo is public.
+# config/projects.example.yaml shows its shape.
+/config/projects.yaml

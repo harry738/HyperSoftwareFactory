@@ -9,29 +9,30 @@
 
 ```
 harry738/HyperSoftwareFactory  ← Factory platform (config, scripts, reference)
-<owner>/project-a             ← Project A
-<owner>/project-b             ← Project B
-<owner>/project-c             ← Project C (future)
+your-org/project-alpha         ← Project A
+your-org/project-beta          ← Project B
+your-org/project-gamma         ← Project C (future)
 ```
 
 The factory lives in **HyperSoftwareFactory**, this repo. The target is to manage all projects through a single config file.
 
-**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. The build plan (v6) replaces this with a central factory whose real registry lives in a private home; see its operating model.
+**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. Only the dashboard does (below). The build plan replaces the per-project install with a central factory; see its operating model.
 
 ## Config
 
-`config/projects.yaml` defines every project:
+`config/projects.yaml` defines every project. It is gitignored: this repo is public, and the registry names real projects and paths on your machine. `config/projects.example.yaml` shows its shape:
 
 ```yaml
 projects:
-  project-a:
-    name: "Project A"
-    repo: "<owner>/project-a"
+  alpha:
+    name: "Project Alpha"
+    repo: "your-org/project-alpha"
     roadmap: "docs/product/roadmap.yaml"
     inbox: "docs/product/roadmap-inbox/"
     council_enabled: true   # true = Full Council at gates 2/3; false = Chair-only Fast Council
     sprint_cadence: weekly
     alert_channel: "telegram:[YOUR_TELEGRAM_CHAT_ID]"
+    path: "/path/to/project-alpha"   # local checkout, read by the dashboard
 ```
 
 Planned fields, added later in the build plan: `risk_paths`, `deploy`, `budget`, `baseline_target`.
@@ -39,7 +40,7 @@ Planned fields, added later in the build plan: `risk_paths`, `deploy`, `budget`,
 ## How signals are routed
 
 ```
-Signal arrives → triage → tagged with project slug ("project-a", "project-c")
+Signal arrives → triage → tagged with project slug ("alpha", "gamma")
                          │
                     ┌────▼────┐
                     │  CONFIG  │
@@ -55,14 +56,16 @@ Signal arrives → triage → tagged with project slug ("project-a", "project-c"
 
 ## Dashboard
 
-The planned factory dashboard shows all projects in one view:
+`python scripts/factory-dashboard.py` serves one dashboard with a tab and a kanban board per project. It reads each project's `<path>/factory/jobs/`, so a project needs `path` set and the factory installed in that checkout. Each tab shows the jobs running and the jobs waiting on you.
+
+Still planned, one table across all projects:
 
 ```
   PROJECT       | INTAKE | BUILD | VERIFY | DEPLOY | COST TODAY
   ──────────────┼────────┼───────┼────────┼────────┼───────────
-  project-a     │   0    │   2   │   1    │   0    │  $14.23
-  project-b     │   1    │   0   │   0    │   0    │   $1.20
-  project-c     │   0    │   0   │   0    │   0    │   $0.00
+  alpha         │   0    │   2   │   1    │   0    │  $14.23
+  beta          │   1    │   0   │   0    │   0    │   $1.20
+  gamma         │   0    │   0   │   0    │   0    │   $0.00
 ```
 
 ## Onboarding a new project
@@ -73,8 +76,8 @@ python scripts/factory-onboard.py --interactive
 
 # Or CLI mode
 python scripts/factory-onboard.py \
-  --name project-c \
-  --repo <owner>/project-c \
+  --name gamma \
+  --repo your-org/project-gamma \
   --council fast \
   --cadence weekly
 ```
@@ -93,6 +96,6 @@ It does not push to the project repo. Review the drafts and commit them there yo
 |---|---|
 | Each project has its own repo | Own CI/CD, issues, PRs, secrets. Keeps concerns separate. |
 | Factory lives in its own repo | One install, all projects benefit. |
-| Config in YAML | Human-readable, git-tracked, PR-reviewable. |
+| Config in YAML | Human-readable. Kept out of git: this repo is public and the projects are not. |
 | Repo inbox pattern | Claude reads from `origin/main` — pushing to inbox is the delivery. |
 | Vault stays local | Handovers are transient. Canonical docs live in GitHub. |

@@ -49,6 +49,20 @@
     border-radius: 8px; color: var(--human); font-family: var(--mono); font-size: 12px;
   }
 
+  /* Project tabs (only under scripts/factory-dashboard.py) */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 32px 0; }
+  .tabs:empty { display: none; }
+  .tab {
+    display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 8px;
+    border: 1px solid var(--line); color: var(--muted); text-decoration: none; font-size: 13px;
+  }
+  .tab:hover { color: var(--text); border-color: var(--muted); }
+  .tab:focus-visible { outline: 2px solid var(--active); outline-offset: 2px; }
+  .tab[aria-current] { background: var(--card); color: var(--text); border-color: var(--muted); }
+  .tab span { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .tab .run { color: var(--active); }
+  .tab .yours { color: var(--human); }
+
   /* Board */
   .board {
     display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px;
@@ -237,6 +251,7 @@
   @media (max-width: 640px) {
     header { padding: 20px 16px 4px; }
     .banner { margin: 12px 16px 0; }
+    .tabs { padding: 12px 16px 0; }
     .board { grid-template-columns: 1fr; padding: 16px 16px 32px; }
     footer { padding: 0 16px 24px; }
     .d-head { padding: 16px; }
@@ -257,6 +272,7 @@
   <h1>Software factory</h1>
   <div class="status" id="status">connecting…</div>
 </header>
+<nav class="tabs" id="tabs" aria-label="Projects"></nav>
 <div id="banner"></div>
 <main class="board" id="board"></main>
 <footer>
@@ -301,9 +317,14 @@ const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
+// scripts/factory-dashboard.py serves projects.json and each project's jobs under <slug>/jobs/.
+// Under a plain `python -m http.server` in one project's factory/ there is one board, at jobs/.
+let projects = [{ slug: '', name: '', installed: true }]
+let current = projects[0]
 let jobs = []
 let lastRender = ''
-const roundCache = new Map() // "<job>/<n>" -> verdicts of a finished round
+const jobsDir = (p = current) => `${p.slug ? p.slug + '/' : ''}jobs/`
+const roundCache = new Map() // a finished round's directory -> its verdicts
 let openJobId = null
 let openPath = null
 let openText = null
@@ -328,9 +349,9 @@ function verdictOf(line) {
 
 // A round's verdicts come from its files: the gate first, then each routed reviewer.
 async function roundVerdicts(job, n) {
-  const key = `${job.id}/${n}`
+  const dir = `${jobsDir()}${job.id}/round-${n}/`
+  const key = dir
   if (roundCache.has(key)) return roundCache.get(key)
-  const dir = `jobs/${job.id}/round-${n}/`
   const v = { gate: verdictOf(await fetchFirst(dir + 'checks.md')), reviews: {} }
   if (v.gate === 'PASS') {
     await Promise.all(Object.keys(job.agents?.reviewers || {}).map(async (r) => {
@@ -405,7 +426,8 @@ function card(job, rounds) {
 }
 
 async function render() {
-  const problems = []
+  const problems = current.installed ? []
+    : [`${current.slug} has no local checkout with factory/ in it: set its path in config/projects.yaml`]
   const cards = new Map(COLUMNS.map((c) => [c, []]))
   for (const job of jobs) {
     if (!STAGES.has(job.stage)) { problems.push(`Job ${job.id} has unknown stage "${job.stage}"`); continue }
@@ -436,11 +458,13 @@ async function render() {
 async function poll() {
   const status = $('status')
   try {
-    jobs = await loadJobs()
+    const all = await Promise.all(projects.map((p) => p.installed ? loadJobs(jobsDir(p)) : []))
+    jobs = all[projects.indexOf(current)]
+    renderTabs(all)
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
-    status.innerHTML = `<span class="dot"></span>jobs/ · ${new Date().toLocaleTimeString()}`
+    status.innerHTML = `<span class="dot"></span>${esc(jobsDir())} · ${new Date().toLocaleTimeString()}`
   } catch (err) {
     status.className = 'status error'
     status.innerHTML = `<span class="dot"></span>${esc(err.message)}`
@@ -448,16 +472,49 @@ async function poll() {
 }
 
 // factory/bin/job writes each jobs/<id>/job.json.
-async function loadJobs() {
+async function loadJobs(dir) {
   let listing
-  try { listing = await fetchText('jobs/') } catch { return [] }
+  try { listing = await fetchText(dir) } catch { return [] }
   const doc = new DOMParser().parseFromString(listing, 'text/html')
   const ids = [...doc.querySelectorAll('a')]
     .map((a) => decodeURIComponent(a.getAttribute('href')))
     .filter((h) => h.endsWith('/'))
     .map((h) => h.slice(0, -1))
     .sort()
-  return Promise.all(ids.map(async (id) => JSON.parse(await fetchText(`jobs/${id}/job.json`))))
+  return Promise.all(ids.map(async (id) => JSON.parse(await fetchText(`${dir}${id}/job.json`))))
+}
+
+// ---- Projects ------------------------------------------------------------
+
+// One tab per project, with what is running and what waits on you.
+function renderTabs(all) {
+  if (!projects[0].slug) return
+  $('tabs').innerHTML = projects.map((p, i) => {
+    const run = all[i].filter((j) => LIVE.has(j.stage)).length
+    const yours = all[i].filter((j) => j.stage === 'needs-human').length
+    return `<a class="tab" href="#${esc(p.slug)}" ${p === current ? 'aria-current="page"' : ''}>${esc(p.name)}
+      ${p.installed ? '' : '<span>no checkout</span>'}
+      ${run ? `<span class="run">${run} running</span>` : ''}
+      ${yours ? `<span class="yours">${yours} yours</span>` : ''}</a>`
+  }).join('')
+}
+
+function pickProject() {
+  current = projects.find((p) => p.slug === decodeURIComponent(location.hash.slice(1)))
+    || projects.find((p) => p.installed) || projects[0]
+  document.title = current.name ? `${current.name} · Software Factory` : 'Software Factory'
+}
+
+window.addEventListener('hashchange', () => { pickProject(); closeDrawer(); poll() })
+
+async function start() {
+  try {
+    const list = JSON.parse(await fetchText('projects.json'))
+    if (list.length) projects = list
+  } catch { /* no hub: the one board */ }
+  pickProject()
+  poll()
+  setInterval(poll, POLL_MS)
 }
 
 // ---- Drawer --------------------------------------------------------------
@@ -507,7 +564,7 @@ async function refreshDrawer() {
   $('d-title').textContent = job.title
   $('d-links').innerHTML = links(job)
 
-  const base = `jobs/${job.id}/`
+  const base = `${jobsDir()}${job.id}/`
   const files = sortFiles(await listFiles(base))
   if (!openPath || !files.includes(openPath)) openPath = files[0] || null
 
@@ -674,8 +731,7 @@ function markdown(src) {
   return html
 }
 
-poll()
-setInterval(poll, POLL_MS)
+start()
 </script>
 </body>
 </html>

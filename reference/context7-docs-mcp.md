@@ -35,7 +35,7 @@ Agent needs to use an API → Context7 resolve-library-id → Context7 query-doc
 npm install -g ctx7
 
 # Setup in project
-cd ~/<project-repo>
+cd ~/your-project
 ctx7 setup
 
 # Adds Context7 rules and skills to Claude Code
