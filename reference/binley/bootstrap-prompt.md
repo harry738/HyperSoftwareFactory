@@ -1,6 +1,6 @@
 # Factory bootstrap prompt (plan P1-07 and P1-08)
 
-Paste everything under the line into a new chat opened on the main project folder (`<project folder>`). This is the one hands-on session. After it, work flows through the factory (plan §6A, "Autopilot").
+Paste everything under the line into a new chat opened on the main project folder (`<projects>\BinleyBuildingSociety`). This is the one hands-on session. After it, work flows through the factory (plan §6A, "Autopilot").
 
 ---
 
@@ -9,11 +9,11 @@ Install the software factory on `main` so it can build this repo's tickets witho
 ## Read first
 - `docs/plans/2026-11-21-ai-first-programme.md`: section 6 (factory operating model) and section 6A (build model, "Pilot result", "Autopilot").
 - `CLAUDE.md` and `GLOSSARY.md`.
-- The pilot report: `<factory clone>\PILOT-REPORT.md`.
-- The factory's own skill: `<factory clone>\.claude\skills\factory\SKILL.md`.
+- The pilot report: `<projects>\Binley-factory\PILOT-REPORT.md`.
+- The factory's own skill: `<projects>\Binley-factory\.claude\skills\factory\SKILL.md`.
 
 ## What exists
-- A working pilot install is in the clone `<factory clone>`, on branch `factory-pilot`. Its working tree has every Windows patch, each marked `# binley:`, including two local commits that were never pushed (the cost-matching fix and the gate's Git Bash fix). Copy from that working tree, not from `origin/factory-pilot`.
+- A working pilot install is in the clone `<projects>\Binley-factory`, on branch `factory-pilot`. Its working tree has every Windows patch, each marked `# binley:`, including two local commits that were never pushed (the cost-matching fix and the gate's Git Bash fix). Copy from that working tree, not from `origin/factory-pilot`.
 - The pilot took issue #23 to an approved PR in one round (38 minutes, about $4.45). The factory could not merge by itself.
 - This machine is Windows 11 with Git Bash. `python3` does not exist here; `python` does. A bare `bash` from Python or PowerShell is WSL's, which cannot read `E:/` paths.
 - Labels `factory`, `factory:needs-info`, `factory:needs-human` and `human-merge` already exist on GitHub.
