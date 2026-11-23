@@ -1,8 +1,73 @@
+<div align="center">
+
 # 🏭 HyperSoftwareFactory
 
 **A software factory for building, verifying, and merging software with AI agents, and a reference architecture for where it is going.**
 
-The factory takes GitHub issues today, and aims to take raw signals (social intake, bugs, requirements, alerts), and produce deployed, verified, monitored software, using Hermes, Claude Code, and GitHub.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Factory: GPLv3](https://img.shields.io/badge/factory-GPLv3-blue.svg)](factory/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.x-3776AB?logo=python&logoColor=white)](requirements.txt)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
+[![GitHub](https://img.shields.io/badge/GitHub-issues%20%E2%86%92%20PRs-181717?logo=github)](https://github.com/harry738/HyperSoftwareFactory/issues)
+<br>
+[![Status](https://img.shields.io/badge/status-pilot-orange.svg)](reference/binley/pilot-report-2026-11-21.md)
+[![Autonomy](https://img.shields.io/badge/autonomy-working%20toward%20L1-yellow.svg)](#autonomy-levels)
+[![Roadmap](https://img.shields.io/badge/roadmap-step%201%20of%206-lightgrey.svg)](#roadmap)
+[![Last commit](https://img.shields.io/github/last-commit/harry738/HyperSoftwareFactory)](https://github.com/harry738/HyperSoftwareFactory/commits/main)
+
+[Summary](#summary) · [Working factory](#the-working-factory) · [Roadmap](#roadmap) · [Architecture](#target-architecture) · [Autonomy](#autonomy-levels) · [Contributing](#contributing)
+
+</div>
+
+---
+
+## Summary
+
+HyperSoftwareFactory turns work requests into reviewed, merged pull requests with a team of AI agents, and earns more autonomy only as measured jobs prove it safe.
+
+- **Today:** a GitHub issue labelled `factory` goes through intake, spec, build, a deterministic gate, independent reviewers (code, security, UI, UX) and an approver. Each issue becomes one PR, which is merged, sent back for changes, or escalated to a human.
+- **Tomorrow:** raw signals (social links, bug reports, feedback, alerts) come in, and deployed, monitored software goes out, with council gates on risky decisions and a weekly Kaizen loop that improves the factory from its own event log.
+- **The principle:** no unreviewed output, evidence over "PASS", hard caps on loops and spend, and secrets kept outside the sandbox.
+
+### The vision
+
+```mermaid
+flowchart LR
+    subgraph IN["Inputs"]
+        direction TB
+        I1["GitHub issues"]
+        I2["Bug reports"]
+        I3["Social links and feedback"]
+        I4["Production alerts"]
+    end
+
+    subgraph HSF["HyperSoftwareFactory"]
+        direction TB
+        A["Agents<br/>intake · spec · build"]
+        V["Independent verifiers<br/>code · security · UI · UX"]
+        G["Gates and approver<br/>risk-tiered decisions"]
+        A --> V --> G
+    end
+
+    subgraph OUT["Outputs"]
+        direction TB
+        O1["Merged PRs"]
+        O2["Deployed software"]
+        O3["Monitoring"]
+    end
+
+    IN --> HSF --> OUT
+    O3 -. "events, failures, cost" .-> K["Weekly Kaizen"]
+    K -. "improvements" .-> HSF
+    H(("Operator")) -. "sets policy,<br/>approves high risk" .-> G
+
+    classDef built fill:#d4edda,stroke:#28a745,color:#000
+    classDef planned fill:#f8f9fa,stroke:#adb5bd,stroke-dasharray:4 3,color:#000
+    class I1,A,V,G,O1 built
+    class I2,I3,I4,O2,O3,K planned
+```
+
+<sub>Green: working today. Dashed: target architecture, not built yet.</sub>
 
 > **Status.** Two things live here:
 > - **A working factory** in `factory/` and `.claude/`: issue → intake → spec → build → gate → review → approve → merge. It was validated on Binley, a fictional demonstrator used to test the idea: 11 jobs, now closed (the first is written up in the [pilot report](reference/binley/pilot-report-2026-11-21.md)). It has not yet run on a real project.
@@ -13,6 +78,29 @@ The factory takes GitHub issues today, and aims to take raw signals (social inta
 ## The working factory
 
 `factory/` and `.claude/` are the factory as it ran on the Binley Building Society demonstrator, a fictional case used to validate the idea. `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
+
+```mermaid
+flowchart LR
+    ISSUE["GitHub issue<br/>label: factory"] --> INTAKE["Intake"]
+    INTAKE --> SPEC["Spec writer"]
+    SPEC --> BUILD["Builder"]
+    BUILD --> GATE{"Gate<br/>checks.sh ·<br/>protected paths"}
+    GATE -- fail --> BUILD
+    GATE -- pass --> REVIEW
+
+    subgraph REVIEW["Independent review"]
+        direction TB
+        RC["Code"]
+        RS["Security"]
+        RU["UI"]
+        RX["UX"]
+    end
+
+    REVIEW --> APPROVE{"Approver"}
+    APPROVE -- "MERGE" --> MERGED(["PR merged"])
+    APPROVE -- "CHANGES<br/>max 3 rounds" --> BUILD
+    APPROVE -- "ESCALATE" --> HUMAN(["Operator decides"])
+```
 
 - **Install into a project (the current path; the build plan replaces it with a central factory):** copy `factory/` and `.claude/` into the target repo (if it already has a `.claude/`, add only `agents/`, `skills/factory/` and `hooks/no-hand-merge.py`), then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `sensitive_paths` (files that always get the security reviewer), `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Copy `factory/settings.example.json` to `.claude/settings.json` and add your package manager's commands: it allows the factory scripts, denies `gh pr merge`, and blocks hand merges with a hook. The agents read what belongs in the project, its rules, users and design system from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
 - **Central factory (build plan E1, replacing the install above):** set `FACTORY_HOME` to a folder outside any public repo, then `factory/bin/factory onboard <owner/repo>` clones the project, creates its config folder and prints a readiness checklist; `factory/bin/factory run <project>` works its queue with one headless Claude Code run per stage; `factory/bin/factory status` lists jobs. Nothing is copied into the project repo, agents run without the GitHub token, and every approved job waits for a person to merge (`unattended_merge` is off). Each stage has a time limit, a stall limit, a turn cap and a cost cap, and each job a budget; hitting one hands the job to a person (`job retry` puts it back). To ask for another round, comment on the PR starting with `/factory`. A `human-merge` label or a change under `sensitive_paths` always goes to a person, and the risk tier comes from the changed paths (`risk_paths`), which intake can raise but not lower.
@@ -68,17 +156,29 @@ Steering a run mid-flight, other models for the builder or reviewers, a merge qu
 
 ## Project registry
 
-The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files to `onboarding/<slug>/` for you to review and push to the project repo. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
+```bash
+pip install -r requirements.txt
+python scripts/factory-onboard.py --interactive
+```
 
-The working factory does not read the registry; only the multi-project dashboard does. The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
+The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
+
+The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
 
 ## Target architecture
 
-```
-SIGNALS ─▶ INTAKE ─▶ TRIAGE ─▶ SPEC ─▶ BUILD ─▶ VERIFY ─▶ DEPLOY ─▶ MONITOR ─▶ LEARN
-                       │           │                  │                         │
-                    Gate 1      Gate 2             Gate 3                    Weekly
-                   (triage)  (architecture)       (deploy)                   Kaizen
+```mermaid
+flowchart LR
+    S["Signals"] --> I["Intake"] --> T["Triage"] --> SP["Spec"] --> B["Build"] --> V["Verify"] --> D["Deploy"] --> M["Monitor"] --> L["Learn"]
+
+    T -.- G1{{"Gate 1<br/>Fast Council"}}
+    SP -.- G2{{"Gate 2<br/>Full Council"}}
+    D -.- G3{{"Gate 3<br/>deploy risk"}}
+    L -.- K[["Weekly Kaizen"]]
+    K -. "improvement items" .-> I
+
+    classDef gate fill:#fff3cd,stroke:#d39e00,color:#000
+    class G1,G2,G3 gate
 ```
 
 8 stages, 3 council gates, 1 weekly Kaizen review, 5 security boundaries.
@@ -136,6 +236,17 @@ Every stage transition appends one event row. A weekly review reads failures, co
 The target is to enforce these by the platform (branch protection, token scopes, runner budgets), not by agent instructions. The working factory enforces 1, 2 and 4 in its scripts today.
 
 ## Autonomy Levels
+
+```mermaid
+flowchart LR
+    L1["L1<br/>Build to PR<br/>you review every PR"] -- "Step 3" --> L2["L2<br/>Build, checks<br/>and verifiers"]
+    L2 -- "Step 5" --> L3["L3<br/>Low-risk merge<br/>and deploy"]
+    L3 -- "Step 6" --> L4["L4<br/>Intake to deploy<br/>you set policy"]
+    NOW(["We are here:<br/>Step 1"]) -.-> L1
+
+    classDef now fill:#fff3cd,stroke:#d39e00,color:#000
+    class NOW now
+```
 
 | Level | What runs without you | Earned by |
 |---|---|---|
