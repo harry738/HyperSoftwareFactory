@@ -13,6 +13,9 @@ Usage:
   job merge <job>                APPROVE → sync with the base branch, gate, merge the PR
   job feedback <job>             needs-human → build, with your feedback (stdin) as feedback-<k>.md
   job reject <job>               needs-info or needs-human → rejected, with your reason (stdin) as rejection.md
+  job stop <job>                 a limit was hit: any running stage → needs-human, with the reason (stdin)
+  job retry <job>                put a stopped job back in the stage it stopped in, with a fresh budget
+  job pr-feedback <job>          start the next round from a `/factory` PR comment, a changes-requested review or failed CI
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
   job sync <job>                 refresh reviews, gate and cost from the job's files
   job serve <job>                start the review dev server if it isn't running (when resuming a review)
@@ -128,9 +131,25 @@ def load(job_id):
 
 def save(job):
     path = job_dir(job["id"]) / "job.json"
+    before = json.loads(path.read_text()) if path.exists() else {}
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(job, indent=2) + "\n")
     tmp.replace(path)
+    if (before.get("stage"), before.get("round")) != (job["stage"], job["round"]):
+        log_event(job, before.get("stage"))
+
+
+def log_event(job, old):
+    """One row per stage change, appended and never rewritten: what the weekly report reads."""
+    start = datetime.fromisoformat(job["started"].replace("Z", "+00:00")) if job.get("started") else None
+    row = {"at": now(), "job": job["id"], "issue": job.get("issue"), "from": old, "to": job["stage"],
+           "round": job["round"], "cost_usd": job.get("cost_usd"),
+           "minutes": int((datetime.now(timezone.utc) - start).total_seconds() // 60) if start else None,
+           "risk": (job.get("intake") or {}).get("risk"), "gate": job.get("gate"), "reviews": job.get("reviews"),
+           "pr": job.get("pr"), "decision": first_line(job_dir(job["id"]) / "decision.md"),
+           "stopped_in": job.get("stopped_in")}
+    with (JOBS / "events.jsonl").open("a") as f:
+        f.write(json.dumps(row) + "\n")
 
 
 def all_jobs():
@@ -369,6 +388,20 @@ def escalate(job, why):
     (job_dir(job["id"]) / "decision.md").write_text(f"ESCALATE\n\n## Why\n{why}\n")
 
 
+def hand_to_human(job):
+    """Tell a person the job is theirs: the decision goes on the PR (or the issue), and the issue is labelled."""
+    decision = (job_dir(job["id"]) / "decision.md").read_text()
+    title = "approved, waiting for you to merge" if decision.startswith("APPROVE") else "needs a human"
+    body = f"### Factory: {title}\n\n{decision.split(chr(10), 1)[1].strip()}"
+    if job["pr"]:
+        if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
+            gh("pr", "ready", str(job["pr"]))
+        comment("pr", job["pr"], body)
+    else:
+        comment("issue", job["issue"], body)
+    label("issue", job["issue"], add=LABELS["needs_human"])
+
+
 def git(job, *args, check=True):
     return run(["git", *args], cwd=job["worktree"], check=check)
 
@@ -554,16 +587,7 @@ def advance(job, stage):
         label("issue", job["issue"], remove=LABELS["needs_human"])
 
     if stage == "needs-human":
-        decision = (d / "decision.md").read_text()
-        title = "approved, waiting for you to merge" if decision.startswith("APPROVE") else "needs a human"
-        body = f"### Factory: {title}\n\n{decision.split(chr(10), 1)[1].strip()}"
-        if job["pr"]:
-            if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
-                gh("pr", "ready", str(job["pr"]))
-            comment("pr", job["pr"], body)
-        else:
-            comment("issue", job["issue"], body)
-        label("issue", job["issue"], add=LABELS["needs_human"])
+        hand_to_human(job)
 
     if old == "review" or stage in TERMINAL:  # binley: the review dev server ends with the review
         proc.stop_port(port(job, 1))
@@ -661,6 +685,7 @@ def cmd_create(number):
         "stage": "intake", "round": 0, "round_limit": CONFIG["max_rounds"],
         "intake": None, "agents": None, "gate": None, "reviews": {},
         "cost_usd": 0.0, "started": now(), "ended": None,
+        "budget_usd": CONFIG.get("job_budget_usd"),  # across every stage; factory/bin/run stops the job at it
     }
     write_issue_md(job)
     save(job)
@@ -781,16 +806,83 @@ def merge_when_allowed(job, tries=10, pause=30):
             time.sleep(pause)
 
 
-def cmd_feedback(job, text):
+def cmd_feedback(job, text, who=None, keep_budget=False):
     if job["stage"] != "needs-human":
         die(f"{job['id']} is in {job['stage']}, not needs-human")
     if not text.strip():
         die("no feedback on stdin")
+    if job.get("stopped_in") in {"intake", "spec"}:
+        die(f"{job['id']} was stopped before it was built; use `job retry`")
     d = job_dir(job["id"])
     k = len(list(d.glob("feedback-*.md"))) + 1
-    (d / f"feedback-{k}.md").write_text(f"# Feedback {k}\n\nFrom @{operator()} after the job escalated.\n\n{text.strip()}\n")
-    save(advance(sync(job), "build"))
+    (d / f"feedback-{k}.md").write_text(f"# Feedback {k}\n\nFrom {who or '@' + operator()} after the job stopped for a person.\n\n{text.strip()}\n")
+    limit = job["round_limit"]
+    job.pop("stopped_in", None)
+    job = advance(sync(job), "build")
+    if keep_budget:  # not a person's feedback, so no fresh round budget
+        job["round_limit"] = limit
+    save(job)
     print(f"{job['id']}: feedback-{k}.md, round {job['round']}")
+
+
+def cmd_stop(job, why):
+    """A limit was hit (time, no output, turns, budget): hand the job to a person from any running stage."""
+    if job["stage"] in TERMINAL | WAITING:
+        die(f"{job['id']} is already {job['stage']}")
+    if not why.strip():
+        die("no reason on stdin")
+    escalate(job, why.strip())
+    job["stopped_in"] = job["stage"]
+    hand_to_human(job)
+    if job["stage"] == "review":
+        proc.stop_port(port(job, 1))
+    job["stage"], job["ended"] = "needs-human", now()
+    save(job)
+    print(f"{job['id']}: needs-human, stopped in {job['stopped_in']}: {why.strip().splitlines()[0]}")
+
+
+def cmd_retry(job):
+    """Put a job that a limit stopped back in the stage it stopped in, with a fresh budget."""
+    if job["stage"] != "needs-human" or not job.get("stopped_in"):
+        die(f"{job['id']} wasn't stopped by a limit; give feedback or merge its PR")
+    require_slot(job["id"])
+    label("issue", job["issue"], remove=LABELS["needs_human"])
+    job["stage"], job["ended"] = job.pop("stopped_in"), None
+    if CONFIG.get("job_budget_usd"):
+        job["budget_usd"] = round(cost_usd(job) + CONFIG["job_budget_usd"], 2)
+    save(job)
+    print(f"{job['id']}: back in {job['stage']} (round {job['round']})")
+
+
+def cmd_pr_feedback(job):
+    """A waiting job's PR may carry its next round. A person asks for one with a comment or
+    review that starts with `/factory`, or a changes-requested review; a failed CI check asks
+    for one too, inside the round budget and once per pushed commit. Prints `nothing` otherwise."""
+    if job["stage"] != "needs-human" or not job["pr"] or job.get("stopped_in") in {"intake", "spec"}:
+        return print(f"{job['id']}: nothing")
+    trusted, since = {operator(), *CONFIG.get("trusted_logins", [])}, job["ended"]
+    pr = gh_json("pr", "view", str(job["pr"]), "--json", "reviews,comments,headRefOid")
+    said = [(r["submittedAt"], r["body"]) for r in pr["reviews"] if r["author"]["login"] in trusted
+            and (r["state"] == "CHANGES_REQUESTED" or r["body"].startswith("/factory"))]
+    said += [(c["createdAt"], c["body"]) for c in pr["comments"]
+             if c["author"]["login"] in trusted and c["body"].startswith("/factory")]
+    said = sorted(s for s in said if s[0] > since)
+    if said:
+        inline = gh_json("api", f"repos/{{owner}}/{{repo}}/pulls/{job['pr']}/comments")
+        lines = [f"- {c['path']}:{c.get('line') or '?'}: {c['body']}" for c in inline
+                 if c["user"]["login"] in trusted and c["created_at"] > since]
+        text = "\n\n".join(body.removeprefix("/factory").strip() or "(see the inline comments)" for _, body in said)
+        return cmd_feedback(job, text + ("\n\nInline comments:\n" + "\n".join(lines) if lines else ""),
+                            who="a review on the pull request")
+    if job["round"] < job["round_limit"] and job.get("ci_feedback_sha") != pr["headRefOid"]:
+        res = run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False)
+        failed = [c for c in json.loads(res.stdout or "[]") if c["bucket"] == "fail"]
+        if failed:
+            job["ci_feedback_sha"] = pr["headRefOid"]
+            return cmd_feedback(job, "CI failed on the pull request. Fix the cause, not the check.\n\n"
+                                + "\n".join(f"- {c['name']}: {c['link']}" for c in failed),
+                                who="CI on the pull request", keep_budget=True)
+    print(f"{job['id']}: nothing")
 
 
 def cmd_reject(job, text):
@@ -850,6 +942,12 @@ def main(argv):
             cmd_feedback(resolve(args[0]), sys.stdin.read())
         elif cmd == "reject" and len(args) == 1:
             cmd_reject(resolve(args[0]), sys.stdin.read())
+        elif cmd == "stop" and len(args) == 1:
+            cmd_stop(sync(resolve(args[0])), sys.stdin.read())
+        elif cmd == "retry" and len(args) == 1:
+            cmd_retry(resolve(args[0]))
+        elif cmd == "pr-feedback" and len(args) == 1:
+            cmd_pr_feedback(resolve(args[0]))
         elif cmd == "agents" and len(args) == 2:
             cmd_agents(sync(resolve(args[0])), args[1])
         elif cmd == "sync" and len(args) == 1:

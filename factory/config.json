@@ -4,6 +4,17 @@
   "base_branch": "main",
   "merge_method": "merge",
   "unattended_merge": false,
+  "job_budget_usd": 15,
+  "stage_budget_usd": 5,
+  "stage_max_turns": 300,
+  "stage_timeout_minutes": 60,
+  "stage_stall_minutes": 20,
+  "retry_waits_seconds": [
+    30,
+    120,
+    480
+  ],
+  "trusted_logins": [],
   "labels": {
     "queue": "factory",
     "needs_info": "factory:needs-info",

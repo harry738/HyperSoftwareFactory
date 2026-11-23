@@ -7,6 +7,7 @@
   spawn_detached(...)     start a process that outlives the script (the review dev server)
   listening(port)         PIDs listening on a TCP port
   stop_port(port)         stop whatever listens on a port, with its child processes
+  kill_tree(pid)          stop a process and everything it started
 
 As a script: `python factory/bin/proc.py stop-port <port>`, for agents stopping their dev server.
 """
@@ -131,6 +132,18 @@ def listening(port):
         if len(cols) == 5 and cols[3] == "LISTENING" and cols[1].rsplit(":", 1)[-1] == str(port):
             pids.add(int(cols[4]))
     return pids
+
+
+def kill_tree(pid):
+    """Stop a process and everything it started. On POSIX the process must have
+    been started in its own session (start_new_session=True)."""
+    if WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
+    else:
+        try:
+            os.killpg(pid, 9)
+        except ProcessLookupError:
+            pass
 
 
 def stop_port(port):

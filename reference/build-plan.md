@@ -95,10 +95,10 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E1.5 | The project's `setup.sh` runs once per worktree, with the package manager's cache shared across jobs | Done. The shared cache is the package manager's own store |
 | E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open. Needs the factory home, the project's token, a signed-in Claude Code CLI on the factory machine, and labelled issues |
 | **E2** | **Limits, the log, and feedback** | |
-| E2.1 | Per stage: wall-clock timeout, turn cap and USD budget, plus a stall kill when a stage has produced no output for some minutes. A breach sends the job to a person | Open |
-| E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Open |
-| E2.3 | Event log: one append-only typed row per stage transition, per project, with cost, time and outcome | Open |
-| E2.4 | Feedback loop: at the start of each run, a "changes requested" review or a failed CI check on a job's PR starts the next build round with that feedback, inside the three-round cap | Open |
+| E2.1 | Per stage: wall-clock timeout, turn cap and USD budget, plus a stall kill when a stage has produced no output for some minutes. A breach sends the job to a person | Done: limits in `config.json`, enforced by `factory/bin/run`; `job stop` hands the job over and `job retry` puts it back. The CLI cost cap is passed too, but whether it applies on a subscription login is unverified, so the per-job budget is computed by the engine |
+| E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Done: up to three more tries, resuming the failed session |
+| E2.3 | Event log: one append-only typed row per stage transition, per project, with cost, time and outcome | Done: `events.jsonl` in the project job folder, written by `job` on every stage change. Per-stage cost and time are in each job folder `usage.jsonl` |
+| E2.4 | Feedback loop: at the start of each run, a "changes requested" review or a failed CI check on a job's PR starts the next build round with that feedback, inside the three-round cap | Done, with one change: see the note under this table |
 | **E3** | **Rules in scripts** | |
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Open |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Open |
@@ -116,6 +116,8 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E6.1 | Network allowlist: package registries, GitHub and the model API only | Open |
 | E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Open |
 | E6.3 | Delete the old path: the LLM-driven loop, install-by-copy, and the Windows patches | Open |
+
+**How the feedback loop is triggered (E2.4).** GitHub does not let an account request changes on its own PR, and the factory opens PRs as the operator. So a person asks for another round with a PR comment or review that starts with `/factory`; a changes-requested review works too when the factory runs under a separate account. Only the operator and the logins in `trusted_logins` count. Feedback from a person gets a fresh round budget, as `job feedback` always has. A failed CI check starts a round on its own, but only inside the existing round budget and once per pushed commit.
 
 **Exit:** one command starts the container. A labelled issue on the first real project becomes a PR waiting for the operator with no manual step. A deliberately runaway stage is killed by its cap. Stopping and restarting `factory run` mid-job loses nothing.
 

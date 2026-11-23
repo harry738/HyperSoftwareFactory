@@ -11,6 +11,12 @@ a job picks up at the stage it was in.
 
 Agents are loaded from the engine's .claude/agents/, not from the project, and
 run without the GitHub token: the factory does every push and GitHub call.
+
+Every stage has limits, set in config.json: a wall-clock timeout, a stall limit
+(no output for that long), a turn cap and a cost cap. A job also has a budget
+across all its stages. Hitting any of them hands the job to a person
+(`job stop`); `job retry` puts it back. A stage that fails for a passing reason,
+such as a rate limit, is tried again after a wait.
 """
 
 import json
@@ -20,6 +26,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -34,19 +41,23 @@ LAYOUT = proc.layout(__file__)
 REPO, JOBS = LAYOUT["repo"], LAYOUT["jobs"]
 CONFIG = json.loads(LAYOUT["config"].read_text())
 CLAUDE = shlex.split(os.environ.get("FACTORY_CLAUDE", "claude"))  # tests point this at a stand-in
-# ponytail: one wall-clock limit per stage. Turn and cost caps and a stall kill are build plan E2.1.
 TIMEOUT = CONFIG.get("stage_timeout_minutes", 60) * 60
+STALL = CONFIG.get("stage_stall_minutes", 20) * 60  # longer than the slowest single command an agent runs
+MAX_TURNS = CONFIG.get("stage_max_turns", 300)
+STAGE_BUDGET = CONFIG.get("stage_budget_usd", 5)
+RETRY_WAITS = CONFIG.get("retry_waits_seconds", [30, 120, 480])
+TRANSIENT = re.compile(r"rate.?limit|overloaded|\b(429|500|502|503|529)\b|ECONNRESET|ETIMEDOUT|temporarily unavailable", re.I)
 DONE = {"merged", "rejected", "needs-info", "needs-human"}
 TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 
 
-def script(name, *args):
-    return subprocess.run([sys.executable, str(BIN / name), *args], capture_output=True, text=True)
+def script(name, *args, stdin=None):
+    return subprocess.run([sys.executable, str(BIN / name), *args], input=stdin, capture_output=True, text=True)
 
 
-def job(*args):
+def job(*args, stdin=None):
     """Run factory/bin/job. Returns (ok, its output)."""
-    res = script("job", *args)
+    res = script("job", *args, stdin=stdin)
     return res.returncode == 0, (res.stdout + res.stderr).strip()
 
 
@@ -70,8 +81,19 @@ def advance(j, stage, quiet=False):
     return ok
 
 
+def stop(j, why):
+    """A limit was hit: hand the job to a person, from whatever stage it is in."""
+    print(job("stop", j["id"], stdin=why)[1], flush=True)
+    return False
+
+
 def port(j, offset):
     return CONFIG["ports"]["base"] + offset + CONFIG["ports"]["step"] * int(j["id"][:3])
+
+
+def usage(j):
+    path = JOBS / j["id"] / "usage.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
 # ---- Headless agents --------------------------------------------------------
@@ -86,15 +108,50 @@ def agent_definition(name):
 
 
 def last_session(j, agent):
-    usage = JOBS / j["id"] / "usage.jsonl"
-    rows = [json.loads(line) for line in usage.read_text().splitlines()] if usage.exists() else []
-    sessions = [r["session"] for r in rows if r["agent"] == agent and r["ok"] and r.get("session")]
+    sessions = [r["session"] for r in usage(j) if r["agent"] == agent and r["ok"] and r.get("session")]
     return sessions[-1] if sessions else None
 
 
+def watch(cmd, cwd, env):
+    """Run one stage and read its event stream. Kills it when it runs past the stage
+    timeout or prints nothing for the stall limit. Returns (how it ended, its final
+    result event, its last lines of output)."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         encoding="utf-8", errors="replace", start_new_session=not proc.WINDOWS)
+    start = time.monotonic()
+    last, result, tail = [start], {}, []
+
+    def read():
+        for line in p.stdout:
+            last[0] = time.monotonic()
+            tail[:] = [*tail[-9:], line.strip()]
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "result":
+                result.update(event)
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    how = None
+    while p.poll() is None and not how:
+        time.sleep(0.5)
+        now = time.monotonic()
+        how = "timeout" if now - start > TIMEOUT else "stall" if now - last[0] > STALL else None
+    if how:
+        proc.kill_tree(p.pid)
+        p.wait()
+    reader.join(5)
+    return how or ("ok" if p.returncode == 0 and not result.get("is_error") else "failed"), result, tail
+
+
 def run_agent(j, agent, message, model=None, resume=None):
-    """One headless Claude Code run for one stage. True when it finished cleanly."""
+    """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly."""
     d = JOBS / j["id"]
+    spent, budget = sum(r["cost_usd"] for r in usage(j)), j.get("budget_usd")
+    if budget and spent >= budget:
+        return stop(j, f"The job has spent ${spent:.2f} of its ${budget:.2f} budget, before the {agent} stage.")
     definition = agent_definition(agent)
     definition["model"] = model or definition["model"]
     worktree = Path(j["worktree"])
@@ -104,35 +161,40 @@ def run_agent(j, agent, message, model=None, resume=None):
               f"Issue: #{j['issue']}. Config: {LAYOUT['config'].as_posix()}. Checks command: {checks}.")
     # The agent's instructions go in by file, and it gets exactly its own tools: nothing else is
     # available (--tools), and nothing needs a person to approve it (--allowedTools, dontAsk).
+    # Only the project's own settings load, never the operator's personal plugins and hooks.
     instructions = d / f"agent-{agent}.md"
     instructions.write_text(definition["prompt"], encoding="utf-8")
     exe = shutil.which(CLAUDE[0]) or CLAUDE[0]
-    cmd = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
-           "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
-           "--output-format", "json", "--permission-mode", "dontAsk", "--tools", *definition["tools"],
-           "--allowedTools", *definition["tools"], "--add-dir", d.as_posix(), REPO.as_posix()]
-    if resume:
-        cmd += ["--resume", resume]
+    base = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
+            "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
+            "--output-format", "stream-json", "--verbose", "--setting-sources", "project",
+            "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
+            "--permission-mode", "dontAsk", "--tools", *definition["tools"],
+            "--allowedTools", *definition["tools"], "--add-dir", d.as_posix(), REPO.as_posix()]
     env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
-    start = time.monotonic()
-    try:
-        res = subprocess.run(cmd, cwd=worktree if worktree.exists() else REPO, env=env,
-                             capture_output=True, text=True, timeout=TIMEOUT)
-        out, code = res.stdout, res.returncode
-    except subprocess.TimeoutExpired:
-        out, code = "", f"timeout after {TIMEOUT}s"
-    try:
-        result = json.loads(out)
-    except ValueError:
-        result = {}
-    ok = code == 0 and not result.get("is_error")
-    with (d / "usage.jsonl").open("a") as f:
-        f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": ok,
-                            "cost_usd": result.get("total_cost_usd") or 0, "session": result.get("session_id"),
-                            "seconds": int(time.monotonic() - start)}) + "\n")
-    if not ok:
-        say(j, f"{agent} failed ({code}): {str(result.get('result') or out)[-300:].strip()}")
-    return ok
+    for wait in [0, *RETRY_WAITS]:
+        time.sleep(wait)
+        start = time.monotonic()
+        how, result, tail = watch(base + (["--resume", resume] if resume else []),
+                                  worktree if worktree.exists() else REPO, env)
+        said = str(result.get("result") or " ".join(tail))[-300:].strip()
+        with (d / "usage.jsonl").open("a") as f:
+            f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": how == "ok",
+                                "how": how, "cost_usd": result.get("total_cost_usd") or 0,
+                                "session": result.get("session_id"), "seconds": int(time.monotonic() - start)}) + "\n")
+        if how != "failed" or "max_" in str(result.get("subtype")) or not TRANSIENT.search(said):
+            break
+        say(j, f"{agent} failed for a passing reason ({said}); trying again")
+        resume = result.get("session_id") or resume
+    if how == "ok":
+        return True
+    if how == "timeout":
+        return stop(j, f"The {agent} stage ran past its {TIMEOUT // 60}-minute limit and was stopped.")
+    if how == "stall":
+        return stop(j, f"The {agent} stage produced no output for {STALL // 60} minutes and was stopped.")
+    if "max_" in str(result.get("subtype")):  # the CLI's own turn or cost cap
+        return stop(j, f"The {agent} stage hit its limit ({result['subtype']}): {MAX_TURNS} turns or ${STAGE_BUDGET}.")
+    return say(j, f"{agent} failed: {said}")
 
 
 # ---- One step per stage -----------------------------------------------------
@@ -146,13 +208,12 @@ def build(j):
         feedback = sorted(d.glob("feedback-*.md"))
         newest = max((p.stat().st_mtime for p in prev.glob("*")), default=0)
         if feedback and feedback[-1].stat().st_mtime > newest:
-            message += f" The user gave feedback: read {feedback[-1].name} and address it, commit, and update build.md for round {n}."
+            message += f" Feedback came in: read {feedback[-1].name} and address it, commit, and update build.md for round {n}."
         elif first_line(prev / "checks.md") == "GATE: FAIL":
             message += f" The gate failed: read round-{n - 1}/checks.md and checks.log, fix it, commit, and update build.md."
         else:
             message += f" Round {n - 1} reviews are in round-{n - 1}/. Address every VERDICT: CHANGES, commit, and update build.md for round {n}."
-    session = last_session(j, "builder") if n > 1 else None
-    if not run_agent(j, "builder", message, resume=session) and not (session and run_agent(j, "builder", message)):
+    if not run_agent(j, "builder", message, resume=last_session(j, "builder") if n > 1 else None):
         return False
     if first_line(d / "build.md") == "STATUS: BLOCKED":
         return advance(j, "needs-human")
@@ -196,7 +257,7 @@ def review(j):
 
 
 def step(j):
-    """Do the job's next step. False when a stage failed: the job stays where it is for the next run."""
+    """Do the job's next step. False when a stage failed or a limit stopped the job."""
     d, stage = JOBS / j["id"], j["stage"]
     if stage == "intake":
         if not run_agent(j, "intake", ""):
@@ -240,26 +301,37 @@ def process(job_id):
         if j["stage"] in DONE:
             return True
         if not step(j):
-            return False
+            return load(job_id)["stage"] in DONE  # a limit handed it to a person: that isn't a failed run
         after = load(job_id)
         if (after["stage"], after["round"]) == (j["stage"], j["round"]):
             return say(j, f"no progress in {j['stage']}; stopping this job")
+
+
+def queue(only):
+    ok, out = job("queue")
+    if not ok:
+        sys.exit(out)
+    rows = [line.split("\t") for line in out.splitlines() if "\t" in line]
+    return [r for r in rows if only in {None, int(r[1])}]
 
 
 def main(argv):
     only = int(argv[0]) if argv else None
     res = script("frontier")
     print((res.stdout + res.stderr).strip(), flush=True)
+    # A waiting job's PR may carry its next round: a `/factory` comment, a changes-requested review, or failed CI.
+    for row in queue(only):
+        if row[0] == "wait" and row[3] == "needs-human":
+            out = job("pr-feedback", row[2])[1]
+            if not out.endswith("nothing"):
+                print(out, flush=True)
     failed, touched = set(), []
     while True:
-        ok, out = job("queue")
-        if not ok:
-            sys.exit(out)
-        rows = [line.split("\t") for line in out.splitlines() if "\t" in line]
-        todo = [r for r in rows if r[0] in {"new", "resume"} and int(r[1]) not in failed and only in {None, int(r[1])}]
+        todo = [r for r in queue(only) if r[0] in {"new", "resume"} and int(r[1]) not in failed]
         if not todo:
             break
         action, issue, job_id, stage = todo[0][:4]
+        ok, out = True, ""
         if action == "new":
             ok, out = job("create", issue)
             job_id = out.splitlines()[-1].strip() if ok else None
