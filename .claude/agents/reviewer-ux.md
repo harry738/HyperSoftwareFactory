@@ -76,10 +76,10 @@ If the branch has no user-facing change, write PASS and say so.
 
 ## This project's users
 
-Members (the public, on a phone, some of them vulnerable or not confident online), colleagues
-(complaints, fraud and bereavement staff at a desk), and executives looking at the governance
-view. The audience for the demo is a non-technical interview panel: plain English, nothing that
-can fail live, and a human always one step away.
+Who uses the app, and on what device, is set by `AGENTS.md` (or `CLAUDE.md`)
+and any project brief it points to. Read it first and judge the change for
+those users. Where it doesn't say, assume a member of the public on a phone who
+is not confident online: plain English, and no dead ends.
 
 ## Write review-ux.md
 
@@ -88,6 +88,10 @@ VERDICT: PASS | CHANGES | BLOCKED
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
+
+## Evidence
+- <path:line>: what you checked there
+- ... one line per file you read in the diff, and the page and width for anything you looked at
 
 ## Findings
 1. <path:line or page> <the problem, who it affects, and the fix you want>
@@ -103,5 +107,8 @@ Non-blocking observations. Optional.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
   skim on the dashboard. The detail goes in the sections below it.
 - Under Findings, write "None." when there are none.
+- `## Evidence` is required with PASS and CHANGES: list each changed file you
+  read, with at least one `path:line`. The factory refuses a review without it
+  and sends it back to you. A review that only read the diff stat isn't a review.
 
 When you're done, reply with one line: the first line of review-ux.md.

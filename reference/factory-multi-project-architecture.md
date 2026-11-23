@@ -16,7 +16,7 @@ your-org/project-gamma         ← Project C (future)
 
 The factory lives in **HyperSoftwareFactory**, this repo. The target is to manage all projects through a single config file.
 
-**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. Only the dashboard does (below). Whether the registry drives installs or is dropped is decided when the second project is onboarded (build plan S6.1).
+**Today:** the working factory is installed per project by copying `factory/` and `.claude/` into the project repo, and it does not read `config/projects.yaml`. Only the dashboard does (below). The build plan replaces the per-project install with a central factory; see its operating model.
 
 ## Config
 
@@ -35,7 +35,7 @@ projects:
     path: "/path/to/project-alpha"   # local checkout, read by the dashboard
 ```
 
-Planned fields, added in build plan Step 5: `risk_paths`, `deploy`, `budget`, `baseline_target`.
+Planned fields, added later in the build plan: `risk_paths`, `deploy`, `budget`, `baseline_target`.
 
 ## How signals are routed
 

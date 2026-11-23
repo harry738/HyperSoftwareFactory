@@ -1,10 +1,12 @@
 # Software Factory — Reference Architecture
 
+> **This is the vision, not the plan.** It describes where the factory could go. The [build plan](build-plan.md) is the source of truth for what is being built and in what order, and it wins wherever the two differ. This document is no longer kept in step with it.
+
 **Version:** v1.1 (2026-11-22)
 **Status:** Target design. The working factory in `factory/` and `.claude/` implements part of it (issue intake, spec, build, gate, review, approve). The [build plan](build-plan.md) maps each section to what exists and what is next.
 **Source:** Synthesis of Factory.ai 2.0, Claude Code Ultracode, Islo security architecture, Matt Pocock skills, Lauren Tan Poteto Mode (pstack), arXiv meta-engineering harness, Dexter Horthy — State of Software Factories / Slop Bench (Agentic AI Foundation, 2026-10)
 
-> **Scope.** Sections 1–5 describe the generic factory. Section 6 holds notes specific to the first deployment, including components that live in that project's repo and not here: its notification relay, watchdog bot, `council.py` and metrics collectors.
+> **Scope.** This document describes the generic factory. Notes specific to any one project live in that project's repo, not here.
 >
 > **Unverified claims.** These came from talks and posts and have not been checked against primary sources: the SlopCodeBench 14.8% figure, the "~100 TypeScript rules" lint set, the Antigravity reviewer pattern, and every install command in section 5. Verify each before relying on it.
 
@@ -245,7 +247,7 @@ Coupling, file size and tech-debt markers are reported alongside but do not gate
 
 ### 2.5 Security Gates
 
-The "Tech" column is the long-term target. The [build plan](build-plan.md) (Step 4) starts with simpler equivalents: ephemeral CI runners, environment-scoped secrets, runner-enforced budgets, an egress allowlist. Isolation and budgets must be in place **before** any autonomous build runs.
+The "Tech" column is the long-term target. The [build plan](build-plan.md) starts with simpler equivalents: ephemeral CI runners, environment-scoped secrets, runner-enforced budgets, an egress allowlist. Isolation and budgets must be in place **before** any autonomous build runs.
 
 | Boundary | Enforcement | Tech |
 |---|---|---|
@@ -301,7 +303,7 @@ New signals → Intake
 
 ## 3. Factory Observability
 
-Borrowing from the first project's monitoring dashboard pattern (monitor/collector, metrics_log, health endpoints):
+Borrowing an existing monitoring pattern (collector, metrics log, health endpoints):
 
 ### 3.1 Factory Metrics Schema
 
@@ -311,7 +313,7 @@ Drizzle table `factory_events`. It is **append-only**: one row per stage transit
 export const factoryEvents = pgTable("factory_events", {
   id: serial("id").primaryKey(),
   // Core identifiers
-  project: varchar("project", { length: 32 }).notNull(),  // "alpha" | "beta" | "gamma"
+  project: varchar("project", { length: 32 }).notNull(),  // the project's slug
   stage: varchar("stage", { length: 16 }).notNull(),  // "intake" | "triage" | "gate1" | "spec" | "gate2" | "build" | "verify" | "gate3" | "deploy" | "monitor" | "learn"
   status: varchar("status", { length: 16 }).notNull(),  // "entered" | "running" | "passed" | "failed" | "blocked"
 
@@ -349,7 +351,7 @@ export const factoryEvents = pgTable("factory_events", {
 
 ### 3.2 Factory Metrics
 
-Exposed as Prometheus-style metrics (same pattern as the first project's collectors):
+Exposed as Prometheus-style metrics:
 
 ```
 # Per-stage counters
@@ -380,7 +382,7 @@ factory_review_evidence_rate{project="alpha"} 0.95  # fraction of verifications 
 
 ### 3.3 Health Endpoints
 
-Same pattern as the first project's `/api/health.*`:
+Namespaced health endpoints:
 
 | Endpoint | What it shows |
 |---|---|
@@ -414,7 +416,7 @@ RM-0549 │ Research Evidence Module │ Tier 1
 
 ### 3.5 Alerting
 
-Same pattern as the first project's watchdog bot — events that trigger alerts:
+Events that trigger alerts:
 
 | Event | Severity | Action |
 |---|---|---|
@@ -510,22 +512,6 @@ echo "# Follow Modern Web Guidance for all web platform features." >> CLAUDE.md
 
 ## 6. Implementation Notes
 
-### Borrowed from the first project
-
-This section is specific to the first deployment. The factory reuses these patterns, which live in that project's repo:
-
-| First-project pattern | Factory Equivalent |
-|---|---|
-| `metrics_log` table | `factory_events` table |
-| `collector.ts` (Prometheus metrics) | `FactoryMetricsCollector` |
-| `/api/health.*` endpoints | `/api/health.factory.*` |
-| Watchdog Bot alerting | Factory alert rules |
-| Relay dispatch (cron/notifications) | Factory event dispatch |
-| Settings toggles (`gen_*` flags) | Factory feature toggles |
-| Product Council run script | Factory gate script (same council.py) |
-| Handover protocol | Spec + Build handover (same format) |
-| QA reviewer agent | Independent verifier agent pool |
-
 ### Hard Constraints
 
 Generic (every project):
@@ -537,10 +523,8 @@ Generic (every project):
 5. **All secrets stay outside the sandbox** — credential injection pattern only.
 6. **Council verdicts are advisory to the operator** — the operator may override with a documented mitigation. A Council can never approve a HIGH-risk change on its own.
 
-Project-specific constraints live in each project's own repo, not here.
-
 ---
 
 ## 7. Next Steps
 
-See the [build plan](build-plan.md). The walking skeleton exists; Step 1 is making it reliable over ten real jobs.
+See the [build plan](build-plan.md). The walking skeleton exists; the engine track comes next.

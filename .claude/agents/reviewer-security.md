@@ -48,12 +48,12 @@ is in the main checkout; your one file goes there.
 
 ## This project's hot spots
 
-- `src/lib/gateway.ts` and `src/lib/redaction.ts`: every model call goes through the gateway, and
-  personal data is redacted first. A call that bypasses it, or an identifier that survives
-  redaction, is a CHANGES.
-- `src/lib/ledger.ts`, `src/lib/money.ts`: balances and payments come from fixed rules, never from a model.
-- `src/app/actions.ts`: server actions are where user input enters. Check validation there.
-- Data is synthetic. Any real name, account, key or secret in the diff is a CHANGES.
+- `sensitive_paths` in the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout) lists the files where a mistake
+  costs most. Read every one the branch changes in full, not only the diff.
+- `AGENTS.md` (or `CLAUDE.md`) sets the project's security rules, such as where
+  user input enters and what may be sent to a model. A change that breaks one
+  is a CHANGES.
+- Any real name, account, key or secret in the diff is a CHANGES.
 
 ## Write review-security.md
 
@@ -62,6 +62,10 @@ VERDICT: PASS | CHANGES
 
 ## Summary
 - 3 to 5 short bullets: what happened in this step and why
+
+## Evidence
+- <path:line>: what you checked there
+- ... one line per file you read in the diff, and the page and width for anything you looked at
 
 ## Findings
 1. <path:line> <the problem, its impact, and the fix you want>
@@ -77,5 +81,8 @@ Non-blocking observations. Optional.
 - `## Summary` comes right after the header: 3 to 5 short bullets a human can
   skim on the dashboard. The detail goes in the sections below it.
 - Under Findings, write "None." when there are none.
+- `## Evidence` is required with PASS and CHANGES: list each changed file you
+  read, with at least one `path:line`. The factory refuses a review without it
+  and sends it back to you. A review that only read the diff stat isn't a review.
 
 When you're done, reply with one line: the first line of review-security.md.

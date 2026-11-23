@@ -6,7 +6,8 @@
   "labels": {
     "queue": "factory",
     "needs_info": "factory:needs-info",
-    "needs_human": "factory:needs-human"
+    "needs_human": "factory:needs-human",
+    "ready": "ready-for-agent"
   },
   "routing": {
     "low": {
@@ -36,8 +37,30 @@
     "CLAUDE.md",
     "docs/project-brief.md",
     "GLOSSARY.md",
-    ".github/workflows/*"
+    ".github/workflows/*",
+    ".claude/*"
   ],
+  "sensitive_paths": [
+    "src/lib/ledger.ts",
+    "src/lib/money.ts",
+    "src/lib/regulatory.ts",
+    "src/lib/deadlines.ts",
+    "src/lib/gateway.ts",
+    "src/lib/redaction.ts",
+    "src/lib/live.ts",
+    "src/lib/preview.ts",
+    "src/lib/safetyNet.ts",
+    "src/lib/audit.ts",
+    "src/lib/cases.ts",
+    "src/app/actions.ts",
+    "package.json",
+    "package-lock.json",
+    ".env*"
+  ],
+  "sensitive_reviewers": {
+    "code": "sonnet",
+    "security": "opus"
+  },
   "ports": {
     "base": 5100,
     "step": 10

@@ -3,10 +3,24 @@
   "max_rounds": 3,
   "base_branch": "main",
   "merge_method": "merge",
+  "unattended_merge": false,
+  "job_budget_usd": 15,
+  "stage_budget_usd": 5,
+  "stage_max_turns": 300,
+  "stage_timeout_minutes": 60,
+  "stage_stall_minutes": 20,
+  "retry_waits_seconds": [
+    30,
+    120,
+    480
+  ],
+  "trusted_logins": [],
   "labels": {
     "queue": "factory",
     "needs_info": "factory:needs-info",
-    "needs_human": "factory:needs-human"
+    "needs_human": "factory:needs-human",
+    "ready": "ready-for-agent",
+    "human_merge": "human-merge"
   },
   "routing": {
     "low": {
@@ -34,8 +48,27 @@
     "factory/bin/*",
     "CLAUDE.md",
     "AGENTS.md",
-    ".github/workflows/*"
+    ".github/workflows/*",
+    ".claude/*"
   ],
+  "sensitive_paths": [
+    "*package.json",
+    "*package-lock.json",
+    "*pnpm-lock.yaml",
+    "*yarn.lock",
+    "*.env*"
+  ],
+  "sensitive_reviewers": {
+    "code": "sonnet",
+    "security": "opus"
+  },
+  "risk_paths": {
+    "low": [
+      "*.md",
+      "docs/*"
+    ],
+    "high": []
+  },
   "ports": {
     "base": 5100,
     "step": 10

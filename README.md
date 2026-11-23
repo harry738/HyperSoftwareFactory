@@ -70,14 +70,14 @@ flowchart LR
 <sub>Green: working today. Dashed: target architecture, not built yet.</sub>
 
 > **Status.** Two things live here:
-> - **A working factory** in `factory/` and `.claude/`: issue → intake → spec → build → gate → review → approve → merge. It has run one pilot job on one project ([pilot report](reference/binley/pilot-report-2026-11-21.md)).
-> - **A target architecture** in `reference/`: signal intake, council gates, deploy, monitoring, and Kaizen. Those parts are not built. The [build plan](reference/build-plan.md) says what exists, what is next, and how to tell each step is done.
+> - **A working factory** in `factory/` and `.claude/`: issue → intake → spec → build → gate → review → approve → merge. It was validated on Binley, a fictional demonstrator used to test the idea: 11 jobs, now closed (the first is written up in the [pilot report](reference/binley/pilot-report-2026-11-21.md)). It has not yet run on a real project.
+> - **A plan to make it a central factory** in `reference/`: one container that serves every project, a Dev council, deploy, and a Kaizen loop. Those parts are not built. The [build plan](reference/build-plan.md) says what exists, what is next, and in what order. The [reference architecture](reference/software-factory-reference-architecture.md) is the longer-term vision.
 
 ---
 
 ## The working factory
 
-`factory/` and `.claude/` are the factory as it runs today on the Binley Building Society demonstrator (a fictional reference case). `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
+`factory/` and `.claude/` are the factory as it ran on the Binley Building Society demonstrator, a fictional case used to validate the idea. `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
 
 ```mermaid
 flowchart LR
@@ -102,47 +102,56 @@ flowchart LR
     APPROVE -- "ESCALATE" --> HUMAN(["Operator decides"])
 ```
 
-- **Install into a project:** copy `factory/` and `.claude/` into the target repo, then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Intake reads what belongs in the project from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
+- **Install into a project (the current path; the build plan replaces it with a central factory):** copy `factory/` and `.claude/` into the target repo (if it already has a `.claude/`, add only `agents/`, `skills/factory/` and `hooks/no-hand-merge.py`), then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `sensitive_paths` (files that always get the security reviewer), `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Copy `factory/settings.example.json` to `.claude/settings.json` and add your package manager's commands: it allows the factory scripts, denies `gh pr merge`, and blocks hand merges with a hook. The agents read what belongs in the project, its rules, users and design system from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
+- **Central factory (build plan E1, replacing the install above):** set `FACTORY_HOME` to a folder outside any public repo, then `factory/bin/factory onboard <owner/repo>` clones the project, creates its config folder and prints a readiness checklist; `factory/bin/factory run <project>` works its queue with one headless Claude Code run per stage; `factory/bin/factory status` lists jobs. Nothing is copied into the project repo, agents run without the GitHub token, and every approved job waits for a person to merge (`unattended_merge` is off). Each stage has a time limit, a stall limit, a turn cap and a cost cap, and each job a budget; hitting one hands the job to a person (`job retry` puts it back). To ask for another round, comment on the PR starting with `/factory`. A `human-merge` label or a change under `sensitive_paths` always goes to a person, and the risk tier comes from the changed paths (`risk_paths`), which intake can raise but not lower.
 - **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
 - **Every project in one dashboard:** from this repo, `python scripts/factory-dashboard.py`, then open http://localhost:8020/. One tab and one board per project in `config/projects.yaml`; each tab shows how many jobs are running and how many wait on you. A project's board needs `path:` set to its local checkout (the one with `factory/` in it).
 - **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
-- **Evidence so far:** 11 jobs on Binley by 22 Nov 2026. The pilot was merged by hand after a Windows gate fault; in the first overnight run the factory merged one PR itself, sent one job back for a CHANGES round, and escalated five to a human, as designed. No job has failed the gate yet. See the [pilot report](reference/binley/pilot-report-2026-11-21.md).
+- **Evidence so far:** 11 jobs finished on Binley by 22 Nov 2026: ten merged, one rejected at intake. The pilot was merged by hand after a Windows gate fault; after it the factory merged one PR itself, sent one job back for a CHANGES round, and escalated eight to a human, all under the project's always-stop rules. No job failed the gate. This shows the mechanism works, not that it can be trusted: Binley has no production and no users. Only the first job has a written report, the [pilot report](reference/binley/pilot-report-2026-11-21.md); the [build plan](reference/build-plan.md) has the rest of the numbers and the learnings carried forward.
 
 ## Roadmap
 
-The factory earns autonomy one level at a time, on measured jobs, not on features shipped. Each step below has an exit criterion in the [build plan](reference/build-plan.md); do not start a step until the one before it has exited.
+The objective is one factory that takes signals to deployed, verified, monitored software across the operator's own projects, with the operator setting policy. Binley tested whether the idea works; it does, and it is closed.
 
-| Step | Goal | Autonomy | Status |
-|---|---|---|---|
-| 0 | Repo hygiene: docs, licences, project-neutral install | – | Mostly done; finish the items under *Now* |
-| 1 | Make the skeleton reliable: merge rule, git sign-in, per-job time and USD caps, branch protection | L1 | In progress: 11 jobs run, with a CHANGES round and escalations; still needs a gate failure and the caps |
-| 2 | Deterministic backpressure: complexity delta, secret scan and dependency audit in `checks.sh` | L1 | Not started |
-| 3 | Verification you can trust: evidence rule, reviewers can't change the branch, spec-only tester, security reviewer exercised | L2 | Partly in code: reviewer browser and one shared dev server |
-| 4 | Isolation and concurrency: dedicated clone with no deploy secrets, daily budget, `concurrency` 2 then 3 | L2 | Partly in code: job lock waits, child processes die with the script |
-| 5 | Risk-tiered merge and deploy: path-based risk floor, LOW merges unattended, HIGH always stops, deploy with rollback | L3 | Not started |
-| 6 | Second project, external intake, event log, weekly Kaizen report, councils if the data asks for them | L4 | Not started |
+The [build plan](reference/build-plan.md) sets how it gets there: a central factory, deployed as a container on local Docker Desktop, with Claude Code as the development engine and a script, not a model, in charge of the loop. The core engine is built first on a three-week timebox; features follow one at a time. What the factory may do without the operator is earned separately, on measured jobs on a real project.
+
+| Engine track | Goal | Status |
+|---|---|---|
+| E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | In code and tested with stand-ins; the first real job is still to run |
+| E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, and a feedback loop from the PR | In code and tested with stand-ins |
+| E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine | In code and tested with stand-ins |
+| E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Not started |
+| E5 | Concurrency, a daily budget, a scheduled run | Not started |
+| E6 | Network allowlist, the container, and removal of the old per-repo path | Not started |
+
+Then the features, in order:
+
+1. **Dev council**, in shadow mode: a multi-model council that debates any job that would otherwise come to the operator, and earns merge power by agreeing with the operator's own decisions.
+2. **Hermes**: scheduled runs and notifications.
+3. **Weekly Kaizen, inside view**: a report from the event log, and a learnings file per project.
+4. **Weekly Kaizen, outside view**: a market watch and an active competitor list per project.
+5. **Holdout checks**: tests the builder never sees.
+6. **Deploy and rollback.**
+7. **A second project.**
+8. **Other external intake.**
 
 ### Now
 
-- **Finish making the agents project-neutral.** `approver.md`, `reviewer-ui.md` and `reviewer-ux.md` still name Binley's fictional label, demo bar and audience.
-- **Import the factory's permission rules.** Binley's `.claude/settings.json` holds the rule that lets `factory/bin/job merge` run unattended (proven on 22 Nov). It was not part of the import, so a fresh install stops at `approve`.
-- **Close the protected-path gap.** `factory/bin/gate` checks modified and deleted files only, so a new file under a protected glob (a new `.github/workflows/*.yml`) passes. The approver caught both cases on 22 Nov; the gate should.
-- **Bring back Binley's later hardening:** sensitive-path routing to the security reviewer and the `## Evidence` requirement for reviews (Binley #65, after the import).
-- **Step 1 exit:** one job that fails the gate, then the per-job time and USD caps (S1.7).
+E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator. Then E2.
 
-### Later
+### Not building
 
-Parallel builders within one spec, council gates, Prometheus metrics, microVM isolation, Context7 and Modern Web Guidance are deferred until the data calls for them. The build plan says what would trigger each.
+Steering a run mid-flight, other models for the builder or reviewers, a merge queue, a webhook server, a mobile app. The build plan says why.
 
 ## Contents
 
 | Path | What's in it |
 |---|---|
-| [`factory/`](factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, live `dashboard.html` |
-| [`.claude/agents/`](.claude/agents/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver |
+| [`factory/`](factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, `settings.example.json`, live `dashboard.html` |
+| [`.claude/agents/`](.claude/agents/), [`.claude/hooks/`](.claude/hooks/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver; a hook that blocks hand merges |
 | [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
-| [`reference/binley/`](reference/binley/) | First real use: pilot report, bootstrap prompt, how to run it on Windows |
-| [`reference/`](reference/) | Target architecture, build plan, planned integrations |
+| [`reference/binley/`](reference/binley/) | The idea validation, now closed: pilot report, bootstrap prompt, how to run it on Windows |
+| [`reference/`](reference/) | Build plan, [feature comparison](reference/feature-comparison.md) against other systems, [competitor list](reference/competitors.md), the vision architecture, planned integrations |
 | [`config/`](config/), [`scripts/`](scripts/) | Project registry (`projects.yaml`, local and gitignored; `projects.example.yaml` shows its shape) and its onboarding script |
 
 ## Project registry
@@ -153,6 +162,8 @@ python scripts/factory-onboard.py --interactive
 ```
 
 The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
+
+The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
 
 ## Target architecture
 
@@ -174,8 +185,8 @@ flowchart LR
 
 | Document | What it covers |
 |---|---|
-| [Reference architecture](reference/software-factory-reference-architecture.md) | Stages, gates, verification, security, observability |
-| [Build plan](reference/build-plan.md) | What exists, what is next, exit criteria per step |
+| [Reference architecture](reference/software-factory-reference-architecture.md) | The vision: stages, gates, verification, security, observability |
+| [Build plan](reference/build-plan.md) | Operating model, engine track, evidence track, features in order |
 | [Multi-project architecture](reference/factory-multi-project-architecture.md) | How one factory serves many project repos |
 | [Context7](reference/context7-docs-mcp.md), [Modern Web Guidance](reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
 
@@ -222,7 +233,7 @@ Every stage transition appends one event row. A weekly review reads failures, co
 4. **Max 3 review-fix loops** — prevents infinite agent cycles
 5. **All secrets stay outside the sandbox**
 
-The target is to enforce these by the platform (branch protection, token scopes, runner budgets), not by agent instructions. The working factory enforces 1 and 4 in its scripts today.
+The target is to enforce these by the platform (branch protection, token scopes, runner budgets), not by agent instructions. The working factory enforces 1, 2 and 4 in its scripts today.
 
 ## Autonomy Levels
 
@@ -239,12 +250,12 @@ flowchart LR
 
 | Level | What runs without you | Earned by |
 |---|---|---|
-| **L1** | Build to PR; you review every PR | Build plan Step 1 |
-| **L2** | Build + checks + verifiers | Step 3 |
-| **L3** | Low-risk merge and deploy | Step 5 |
-| **L4** | Intake to deploy for low-risk work; you set policy | Step 6 |
+| **L1** | Issue to approved PR; you merge | Ten measured jobs on a real project |
+| **L2** | As L1, with reviewers you have measured | Twenty jobs reviewed blind against the reviewers |
+| **L3** | Merge for the LOW tier, defined by path | The Dev council agreeing with you over twenty jobs, then twenty LOW-tier merges with no escape |
+| **L4** | Signal to deploy for the LOW tier; you set policy | L3 sustained for four weeks |
 
-The working factory has the machinery for L2 and an approver that can merge. On evidence it is working toward L1: it has merged a PR unattended, but the Step 1 exit is not met.
+Levels are per project and earned on a real one, so none is earned yet: Binley showed the mechanism works, including one unattended merge, but no real project has run a job. Always-stop rules by label and path outrank every level. The [build plan](reference/build-plan.md) has the full criteria.
 
 ## Planned Integrations
 
@@ -261,6 +272,7 @@ None of these is wired in yet, and their claims are the vendors' own.
 ```bash
 python scripts/test_factory_onboard.py   # self-check for the onboarding script
 python factory/test_factory.py           # factory script checks; run inside a Node project after `npm ci`
+python factory/test_run.py               # the central layout end to end, with stand-ins for GitHub and the model
 ```
 
 ## Contributing
