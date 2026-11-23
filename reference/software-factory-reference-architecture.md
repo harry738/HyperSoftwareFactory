@@ -119,7 +119,7 @@ All signals that enter the factory:
 **Trust boundary:** everything from outside (social posts, emails, web pages, issue text from strangers) is untrusted input and may contain instructions aimed at the agents. Raw external content is summarised into a fixed schema by a model call that has no tools. Only that summary reaches any agent that can write code, mint work, or call tools. Manual signals from the operator are the only trusted source.
 
 **Triage rules:**
-- Content is routed to a project by the slug in `config/projects.yaml` (for example content about project A → `project-a`)  
+- Content is routed to a project by the slug in `config/projects.yaml` (for example `alpha`)  
 - Bug → Poteto `bug-fix` playbook (investigation before fix)
 - Alert → Ops playbook (diagnose before resolve)
 - Unclear → Council fast mode (Chair only, 2 min verdict)
@@ -318,7 +318,7 @@ export const factoryEvents = pgTable("factory_events", {
   status: varchar("status", { length: 16 }).notNull(),  // "entered" | "running" | "passed" | "failed" | "blocked"
 
   // Work item tracking
-  workItemId: varchar("work_item_id", { length: 64 }).notNull(),  // stable from intake onward, e.g. "project-a#412"
+  workItemId: varchar("work_item_id", { length: 64 }).notNull(),  // stable from intake onward, e.g. "alpha#412"
   signalId: varchar("signal_id", { length: 32 }),  // source reference
   rmNumber: varchar("rm_number", { length: 8 }),  // RM-XXXX
   prNumber: integer("pr_number"),
@@ -355,29 +355,29 @@ Exposed as Prometheus-style metrics:
 
 ```
 # Per-stage counters
-factory_stage_entered{project="project-a",stage="intake"} 47
-factory_stage_completed{project="project-a",stage="build",status="passed"} 42
-factory_stage_completed{project="project-a",stage="build",status="failed"} 5
+factory_stage_entered{project="alpha",stage="intake"} 47
+factory_stage_completed{project="alpha",stage="build",status="passed"} 42
+factory_stage_completed{project="alpha",stage="build",status="failed"} 5
 
 # Timing histograms (bucketed)
-factory_stage_duration_seconds{project="project-a",stage="intake"}_bucket{le="60"} 45
-factory_stage_duration_seconds{project="project-a",stage="build"}_bucket{le="3600"} 30
+factory_stage_duration_seconds{project="alpha",stage="intake"}_bucket{le="60"} 45
+factory_stage_duration_seconds{project="alpha",stage="build"}_bucket{le="3600"} 30
 
 # Cost metrics
-factory_llm_cost_usd_total{project="project-a",stage="build"} 123.45
-factory_stage_cost_usd_total{project="project-a",stage="council"} 45.67
+factory_llm_cost_usd_total{project="alpha",stage="build"} 123.45
+factory_stage_cost_usd_total{project="alpha",stage="council"} 45.67
 
 # Cycle time (signal to deploy)
-factory_cycle_time_seconds{project="project-a"} 86400
+factory_cycle_time_seconds{project="alpha"} 86400
 
 # Current WIP by stage
-factory_wip{project="project-a",stage="build"} 3
-factory_wip{project="project-a",stage="verify"} 2
+factory_wip{project="alpha",stage="build"} 3
+factory_wip{project="alpha",stage="verify"} 2
 
 # Maintainability (anti-slop tracking)
-factory_complexity_delta{project="project-a"} 0.02  # avg complexity increase per PR
-factory_complexity_flag_rate{project="project-a"} 0.12  # fraction of PRs flagged
-factory_review_evidence_rate{project="project-a"} 0.95  # fraction of verifications with evidence
+factory_complexity_delta{project="alpha"} 0.02  # avg complexity increase per PR
+factory_complexity_flag_rate{project="alpha"} 0.12  # fraction of PRs flagged
+factory_review_evidence_rate{project="alpha"} 0.95  # fraction of verifications with evidence
 ```
 
 ### 3.3 Health Endpoints

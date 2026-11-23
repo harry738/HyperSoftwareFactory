@@ -4,10 +4,10 @@ Factory Onboarding Wizard — register a project with the Software Factory.
 
 Usage:
     python scripts/factory-onboard.py --interactive
-    python scripts/factory-onboard.py --name my-project --repo owner/my-project --council fast
+    python scripts/factory-onboard.py --name myproject --repo your-org/myproject --council fast
 
 What it does:
-    1. Adds the project to config/projects.yaml.
+    1. Adds the project to config/projects.yaml (gitignored: it stays on this machine).
     2. Writes draft roadmap files to onboarding/<slug>/ for you to review
        and push to the project repo. It does NOT push anything itself.
 
@@ -139,7 +139,7 @@ def print_next_steps(slug, repo, out):
     print(f"       roadmap.yaml   → {ROADMAP_PATH}")
     print(f"       roadmap-inbox/ → {INBOX_PATH}")
     print(f"       .factory.md    → .factory.md")
-    print(f"  2. Commit config/projects.yaml in this repo.\n")
+    print(f"  2. Nothing to commit here: config/projects.yaml is gitignored.\n")
 
 # ── Interactive wizard ──────────────────────────────────────────────────
 
@@ -153,11 +153,11 @@ def ask(prompt, valid, error):
 def interactive_wizard():
     print("\n" + "=" * 60 + "\n  FACTORY ONBOARDING WIZARD\n" + "=" * 60 + "\n")
     existing = load_config()["projects"]
-    slug = ask("  Project slug (e.g. 'my-project'): ",
+    slug = ask("  Project slug (e.g. 'myproject'): ",
                lambda s: SLUG_RE.match(s) and s not in existing,
                "2-32 chars, lowercase, no spaces, and not already registered.")
     name = input(f"  Full project name (default: {slug}): ").strip() or slug
-    repo = ask(f"  GitHub repo (e.g. 'owner/{slug}'): ", REPO_RE.match,
+    repo = ask(f"  GitHub repo (e.g. 'your-org/{slug}'): ", REPO_RE.match,
                "Format: 'owner/repo' — no full URL.")
 
     print(f"\n  Checking {repo}...")
