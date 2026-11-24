@@ -135,6 +135,8 @@ Then the features, in order:
 7. **A second project.**
 8. **Other external intake.**
 
+Alongside these, **FullAuto mode**: a per-project switch under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
+
 ### Now
 
 E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator. Then E2.
@@ -255,7 +257,7 @@ flowchart LR
 | **L3** | Merge for the LOW tier, defined by path | The Dev council agreeing with you over twenty jobs, then twenty LOW-tier merges with no escape |
 | **L4** | Signal to deploy for the LOW tier; you set policy | L3 sustained for four weeks |
 
-Levels are per project and earned on a real one, so none is earned yet: Binley showed the mechanism works, including one unattended merge, but no real project has run a job. Always-stop rules by label and path outrank every level. The [build plan](reference/build-plan.md) has the full criteria.
+Levels are per project and earned on a real one, so none is earned yet: Binley showed the mechanism works, including one unattended merge, but no real project has run a job. Always-stop rules by label and path outrank every level. Levels are the default, supervised mode; FullAuto mode is the operator's switch to skip the wait. The [build plan](reference/build-plan.md) has the full criteria.
 
 ## Planned Integrations
 
