@@ -13,10 +13,16 @@ branch adds, modifies, deletes or renames a file matching config.json
 `protected_paths` (fnmatch patterns, where `*` also matches `/`). A new file
 counts: a new CI workflow or agent definition changes what runs as much as an
 edited one.
+
+The gate's own run (not the builder's) has the build caches off: a cached PASS
+replays results without running the tests. It sets FACTORY_GATE=1, TURBO_FORCE
+and NX_SKIP_NX_CACHE, plus config.json `gate_env` for any other tool's switch;
+checks.sh can test FACTORY_GATE for a cache that has no environment switch.
 """
 
 import fnmatch
 import json
+import os
 import subprocess
 import sys
 import time
@@ -30,6 +36,8 @@ LAYOUT = proc.layout(__file__)  # central home, or the factory inside the projec
 REPO, JOBS, CHECKS = LAYOUT["repo"], LAYOUT["jobs"], LAYOUT["checks"]
 CONFIG = json.loads(LAYOUT["config"].read_text())
 TAIL = 80
+# A cached PASS is not evidence (build plan E3.4): the gate's run bypasses the build caches.
+NO_CACHE = {"FACTORY_GATE": "1", "TURBO_FORCE": "true", "NX_SKIP_NX_CACHE": "true", **CONFIG.get("gate_env", {})}
 
 
 def die(msg):
@@ -71,7 +79,7 @@ def clean_head(worktree):
     return git(worktree, "rev-parse", "HEAD").strip()
 
 
-def run_checks(worktree, capture=True):
+def run_checks(worktree, capture=True, env=None):
     """Returns (exit code, log, seconds running, seconds waiting for the lock)."""
     # binley: one checks.sh at a time per worktree, so the builder's run and its
     # Stop hook's run never install node_modules at once. The lock waits.
@@ -81,7 +89,7 @@ def run_checks(worktree, capture=True):
         proc.lock(f)
         start = time.monotonic()
         head = clean_head(worktree)
-        res = subprocess.run([bash(), CHECKS.as_posix()], cwd=worktree, capture_output=capture, text=True)
+        res = subprocess.run([bash(), CHECKS.as_posix()], cwd=worktree, capture_output=capture, text=True, env=env)
         # binley: remember a clean pass, so the Stop hook needn't run the same checks again
         if res.returncode == 0 and head and clean_head(worktree) == head:
             marker.write_text(head)
@@ -106,7 +114,7 @@ def gate(job_id, merge):
     round_dir = JOBS / job_id / f"round-{job['round']}"
     commit = git(worktree, "rev-parse", "HEAD").strip()
     protected = protected_changes(worktree)
-    code, log, seconds, waited = run_checks(worktree)  # the gate always runs the checks itself
+    code, log, seconds, waited = run_checks(worktree, env={**os.environ, **NO_CACHE})  # always run by the gate itself
     verdict = "PASS" if code == 0 and not protected else "FAIL"
     name = "merge-checks" if merge else "checks"
     (round_dir / f"{name}.log").write_text(log)
@@ -116,6 +124,7 @@ def gate(job_id, merge):
         + (f", after waiting {waited}s for another checks run in this worktree" if waited > 5 else ""),
         f"Protected paths: {'changed: ' + ', '.join(protected) if protected else 'none changed'}",
         f"Commit {commit[:7]}" + (", synced with the latest main before merging" if merge else ""),
+        "Build caches off: " + ", ".join(f"{k}={v}" for k, v in NO_CACHE.items()),
     ]
     (round_dir / f"{name}.md").write_text(
         f"GATE: {verdict}\nCOMMIT: {commit}\n\n"

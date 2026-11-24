@@ -111,7 +111,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
-| E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Open |
+| E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Done: the gate's run sets `FACTORY_GATE=1`, `TURBO_FORCE` and `NX_SKIP_NX_CACHE`, plus any switch in `gate_env` in `config.json`, and lists them in `checks.md`. The builder's own runs keep the cache |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |

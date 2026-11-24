@@ -49,6 +49,9 @@ RETRY_WAITS = CONFIG.get("retry_waits_seconds", [30, 120, 480])
 TRANSIENT = re.compile(r"rate.?limit|overloaded|\b(429|500|502|503|529)\b|ECONNRESET|ETIMEDOUT|temporarily unavailable", re.I)
 DONE = {"merged", "rejected", "needs-info", "needs-human"}
 TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
+# Reviewers run in parallel threads, and append mode on Windows is a seek and a write, not
+# one atomic append: two rows written at once can overwrite each other and break the file.
+USAGE_LOCK = threading.Lock()
 
 
 def script(name, *args, stdin=None):
@@ -93,7 +96,8 @@ def port(j, offset):
 
 def usage(j):
     path = JOBS / j["id"] / "usage.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+    with USAGE_LOCK:  # not while another reviewer's thread is half-way through its row
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
 # ---- Headless agents --------------------------------------------------------
@@ -178,7 +182,7 @@ def run_agent(j, agent, message, model=None, resume=None):
         how, result, tail = watch(base + (["--resume", resume] if resume else []),
                                   worktree if worktree.exists() else REPO, env)
         said = str(result.get("result") or " ".join(tail))[-300:].strip()
-        with (d / "usage.jsonl").open("a") as f:
+        with USAGE_LOCK, (d / "usage.jsonl").open("a") as f:
             f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": how == "ok",
                                 "how": how, "cost_usd": result.get("total_cost_usd") or 0,
                                 "session": result.get("session_id"), "seconds": int(time.monotonic() - start)}) + "\n")
