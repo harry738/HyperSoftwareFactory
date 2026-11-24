@@ -15,9 +15,20 @@ with tempfile.TemporaryDirectory() as tmp:
     (tmp / "alpha" / "factory" / "config.json").write_text("private")
     (tmp / "alpha" / "secret.txt").write_text("private")
     fd.CONFIG_PATH = tmp / "projects.yaml"
+    fd.HOME = tmp / "home"  # never the real factory home
     assert fd.load_projects() == {}, "no registry yet is not an error"
     fd.CONFIG_PATH.write_text(
         f"projects:\n  alpha:\n    name: Alpha\n    path: '{tmp / 'alpha'}'\n  beta:\n    repo: o/beta\n")
+
+    # Central layout: gamma has a job, delta none yet, "half" was never given a config.
+    # alpha is installed both ways; beta is in the registry without a checkout.
+    for name in ("alpha", "beta", "gamma", "delta"):
+        (fd.HOME / "projects" / name).mkdir(parents=True)
+        (fd.HOME / "projects" / name / "config.json").write_text("private")
+    (fd.HOME / "projects" / "half").mkdir()
+    central = fd.HOME / "work" / "gamma" / "jobs" / "002-y"
+    central.mkdir(parents=True)
+    (central / "job.json").write_text('{"id": "002-y"}')
 
     fd.Handler.projects = fd.load_projects()
     server = ThreadingHTTPServer(("127.0.0.1", 0), fd.Handler)
@@ -33,12 +44,22 @@ with tempfile.TemporaryDirectory() as tmp:
 
     assert json.loads(get("/projects.json")[1]) == [
         {"slug": "alpha", "name": "Alpha", "installed": True},
-        {"slug": "beta", "name": "beta", "installed": False},
+        {"slug": "beta", "name": "beta", "installed": True},
+        {"slug": "alpha-central", "name": "Alpha (central)", "installed": True},
+        {"slug": "delta", "name": "delta", "installed": True},
+        {"slug": "gamma", "name": "gamma", "installed": True},
     ]
+    assert get("/gamma/jobs/002-y/job.json") == (200, '{"id": "002-y"}')
+    assert "002-y/" in get("/gamma/jobs/")[1]
+    assert get("/delta/jobs/")[0] == 404, "no job yet: the page shows an empty board"
+    for escape in ("/gamma/jobs/../../../projects/gamma/config.json",
+                   "/gamma/jobs/%2e%2e/%2e%2e/%2e%2e/projects/gamma/config.json"):
+        assert "private" not in get(escape)[1], f"{escape} left the jobs directory"
     assert get("/alpha/jobs/001-x/job.json") == (200, '{"id": "001-x"}')
     assert "001-x/" in get("/alpha/jobs/")[1], "the board reads the directory listing"
     assert get("/")[0] == 200 and get("/dashboard.html")[0] == 200
-    assert get("/beta/jobs/")[0] == 404, "no checkout, no board"
+    fd.HOME = tmp / "none"
+    assert fd.load_projects()["beta"]["jobs"] is None, "no checkout, no board"
     for escape in ("/alpha/jobs/../config.json", "/alpha/jobs/%2e%2e/config.json",
                    "/alpha/jobs/../../secret.txt", "/alpha/jobs/..%5c..%5csecret.txt"):
         assert "private" not in get(escape)[1], f"{escape} left the jobs directory"
