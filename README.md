@@ -135,7 +135,7 @@ Then the features, in order:
 7. **A second project.**
 8. **Other external intake.**
 
-Alongside these, **FullAuto mode**: a per-project switch under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
+Alongside these, **FullAuto mode**: an option the operator selects for one job (a label), one run (a flag) or a whole project, under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
 
 ### Now
 

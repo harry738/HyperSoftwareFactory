@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.3 (2026-11-24) — adds FullAuto mode: a per-project mode in which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.3 (2026-11-24) — adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -155,22 +155,25 @@ Rules that hold at every level:
 
 ## FullAuto mode
 
-A mode, set per project, in which no job waits for a person to verify it. The engine decides by rule where a rule exists and asks a model where it does not, inside a policy the operator writes. It then checks its own results and changes what it allows itself.
+A mode the operator selects, in which no job waits for a person to verify it. The engine decides by rule where a rule exists and asks a model where it does not, inside a policy the operator writes. It then checks its own results and changes what it allows itself.
 
-`supervised` stays the default. `full_auto` is the operator's switch, and it replaces the operator-agreement evidence of L2 and L3 with the factory's own record (A5, A6). Most of the merge path exists already: with `unattended_merge` on, an APPROVE from the approver merges after the merge gate and CI. What is missing:
+`supervised` stays the default. FullAuto is an option a person opts into, the way a Claude Code session opts into a mode such as Ultracode: nothing runs in it unless someone selected it. It replaces the operator-agreement evidence of L2 and L3 with the factory's own record (A6, A7). Most of the merge path exists already: with `unattended_merge` on, an APPROVE from the approver merges after the merge gate and CI. What is missing:
 
 | ID | Task | Status |
 |---|---|---|
-| A1 | A `policy` block in the project's `config.json`, replacing `unattended_merge`: the `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` or `judge`), and a daily cap on merges. A project starts at the LOW tier | Open |
-| A2 | A `policy.md` per project in the factory home: the operator's rules in plain language. The approver and the judge read it and name the rule they applied. It is not in the project repo, so a builder cannot change it | Open |
-| A3 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE is one more build round with the judge's direction. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
-| A4 | A watch after the merge. The engine waits for the base branch's CI, and for the deploy health check once F6 exists. A failure merges a revert, logs an escape and sends the job back for one round with the failure as feedback | Open |
-| A5 | Grading. Fourteen days after each merge the engine records whether it was reverted or hot-fixed, next to the verdict and the rule that allowed it | Open |
-| A6 | The factory changes its own allowance, kept in a state file in the factory home. An escape takes that tier out of unattended merge at once. A run of clean graded merges (`promote_after`, twenty to start with) adds the next tier, never past the `ceiling` | Open |
-| A7 | Learnings written by the engine. Each CHANGES round, DECLINE and escape adds a dated entry to the project's learnings file from a fixed template, and a weekly run condenses the file. Both go through the factory as ordinary jobs | Open |
+| A1 | Selecting the mode, at three levels. For one job: a `full-auto` label on the issue. For one run: `factory run <project> --full-auto`. As a project's default: `mode` in its `config.json`. The most specific choice wins, and a `supervised` label or `--supervised` turns it off the same way. The label counts only when the operator or a login in `trusted_logins` added it. `factory status`, the dashboard and each event-log row show the mode a job ran in | Open |
+| A2 | A `policy` block in the project's `config.json`, replacing `unattended_merge`: the default `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` or `judge`), and a daily cap on merges. A project starts at the LOW tier | Open |
+| A3 | A `policy.md` per project in the factory home: the operator's rules in plain language. The approver and the judge read it and name the rule they applied. It is not in the project repo, so a builder cannot change it | Open |
+| A4 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE is one more build round with the judge's direction. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
+| A5 | A watch after the merge. The engine waits for the base branch's CI, and for the deploy health check once F6 exists. A failure merges a revert, logs an escape and sends the job back for one round with the failure as feedback | Open |
+| A6 | Grading. Fourteen days after each merge the engine records whether it was reverted or hot-fixed, next to the verdict and the rule that allowed it | Open |
+| A7 | The factory changes its own allowance, kept in a state file in the factory home. An escape takes that tier out of unattended merge at once. A run of clean graded merges (`promote_after`, twenty to start with) adds the next tier, never past the `ceiling` | Open |
+| A8 | Learnings written by the engine. Each CHANGES round, DECLINE and escape adds a dated entry to the project's learnings file from a fixed template, and a weekly run condenses the file. Both go through the factory as ordinary jobs | Open |
 
 Rules that hold in FullAuto mode:
 
+- Only a person selects the mode. No agent, and not the factory itself, can turn it on.
+- Selecting the mode does not lift the policy: the tier ceiling, the sensitive-path rule and the caps still apply.
 - The gate, required CI and protected paths are never judged. A branch that fails the checks or touches a protected path does not merge in any mode.
 - A `human-merge` label on an issue still sends that job to a person. That is a person asking, not the factory needing one.
 - The factory may tighten its own allowance freely and loosen it only up to the `ceiling`. It never edits `config.json` or `policy.md`.
@@ -181,7 +184,7 @@ What the mode cannot do:
 - It learns only from failures it can see: a failed check, a failed health check, a revert. A change that passes every check and is still wrong is not caught, so the mode is only as good as the project's checks. Holdout checks (F5), the deploy health check (F6) and monitoring alerts (F8) are what raise that.
 - It does not answer an unclear issue. Intake still asks on the issue (NEEDS-INFO) and the job continues when someone answers.
 
-**Order.** A1 and A2 follow E4: they change the same files, and an unattended merge needs reviewers that are read-only and tied to the commit they reviewed. A4 lands before any project is switched on, with the daily budget (E5.2). A3 comes with F1, and A5 to A7 with F3. A project should run some supervised jobs with a real model first; none has yet.
+**Order.** A1 to A3 follow E4: they change the same files, and an unattended merge needs reviewers that are read-only and tied to the commit they reviewed. A5 lands before the mode is selected anywhere, with the daily budget (E5.2). A4 comes with F1, and A6 to A8 with F3. A project should run some supervised jobs with a real model first; none has yet.
 
 ---
 
