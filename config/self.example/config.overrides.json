@@ -1,0 +1,30 @@
+{
+  "protected_paths": [],
+  "sensitive_paths": [
+    "factory/bin/*",
+    "factory/config.json",
+    "factory/checks.sh",
+    ".claude/*",
+    ".github/workflows/*",
+    "AGENTS.md",
+    "CONTEXT.md",
+    "scripts/test.sh",
+    "requirements.txt",
+    "*.env*"
+  ],
+  "risk_paths": {
+    "low": [
+      "*.md",
+      "reference/*"
+    ],
+    "high": []
+  },
+  "dev_server": [
+    "python3",
+    "-m",
+    "http.server",
+    "{port}",
+    "--directory",
+    "factory"
+  ]
+}
