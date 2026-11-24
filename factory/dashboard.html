@@ -276,9 +276,11 @@
 <div id="banner"></div>
 <main class="board" id="board"></main>
 <footer>
-  <span>/factory run</span>
-  <span>/factory run &lt;n&gt;</span>
-  <span>/factory &lt;anything&gt;</span>
+  <span id="commands" style="display: contents">
+    <span>/factory run</span>
+    <span>/factory run &lt;n&gt;</span>
+    <span>/factory &lt;anything&gt;</span>
+  </span>
   <span id="totals"></span>
 </footer>
 
@@ -395,6 +397,31 @@ function links(job) {
   return out.join('')
 }
 
+// A central project (`current.project`, set by the hub) is run from the factory's
+// command line; a per-repo install from the /factory skill.
+const SKILL_COMMANDS = document.getElementById('commands').innerHTML
+
+function footerCommands() {
+  const p = current.project
+  if (!p) return SKILL_COMMANDS
+  return [`factory run ${p}`, `factory run ${p} <issue>`, `factory status ${p}`]
+    .map((c) => `<span>${esc(c)}</span>`).join('')
+}
+
+function humanHint(job) {
+  const merge = job.pr ? `merge PR #${job.pr} to approve<br>` : ''
+  if (!current.project) return `${merge}or give feedback: /factory &lt;anything&gt;`
+  // As factory/bin/job: a job stopped before it was built takes no feedback.
+  const next = []
+  if (job.stopped_in) next.push(`stopped in ${esc(job.stopped_in)}: job retry ${esc(job.id)}`)
+  if (!['intake', 'spec'].includes(job.stopped_in)) {
+    next.push(job.pr
+      ? `or comment on the PR starting /factory, then factory run ${esc(current.project)}`
+      : `give feedback: job feedback ${esc(job.id)}`)
+  }
+  return merge + next.join('<br>')
+}
+
 function card(job, rounds) {
   const live = LIVE.has(job.stage)
   const human = job.stage === 'needs-human'
@@ -421,7 +448,7 @@ function card(job, rounds) {
       <div class="links">${links(job)}</div>
       ${rounds.length ? `<div class="rounds">${rounds.join('')}</div>` : ''}
       <div class="meta">${meta}</div>
-      ${human ? `<div class="hint">${job.pr ? `merge PR #${job.pr} to approve<br>` : ''}or give feedback: /factory &lt;anything&gt;</div>` : ''}
+      ${human ? `<div class="hint">${humanHint(job)}</div>` : ''}
     </article>`
 }
 
@@ -502,6 +529,7 @@ function renderTabs(all) {
 function pickProject() {
   current = projects.find((p) => p.slug === decodeURIComponent(location.hash.slice(1)))
     || projects.find((p) => p.installed) || projects[0]
+  $('commands').innerHTML = footerCommands()
   document.title = current.name ? `${current.name} · Software Factory` : 'Software Factory'
 }
 

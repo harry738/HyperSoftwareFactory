@@ -43,11 +43,11 @@ with tempfile.TemporaryDirectory() as tmp:
             return e.code, ""
 
     assert json.loads(get("/projects.json")[1]) == [
-        {"slug": "alpha", "name": "Alpha", "installed": True},
-        {"slug": "beta", "name": "beta", "installed": True},
-        {"slug": "alpha-central", "name": "Alpha (central)", "installed": True},
-        {"slug": "delta", "name": "delta", "installed": True},
-        {"slug": "gamma", "name": "gamma", "installed": True},
+        {"slug": "alpha", "name": "Alpha", "installed": True, "project": None},
+        {"slug": "beta", "name": "beta", "installed": True, "project": "beta"},
+        {"slug": "alpha-central", "name": "Alpha (central)", "installed": True, "project": "alpha"},
+        {"slug": "delta", "name": "delta", "installed": True, "project": "delta"},
+        {"slug": "gamma", "name": "gamma", "installed": True, "project": "gamma"},
     ]
     assert get("/gamma/jobs/002-y/job.json") == (200, '{"id": "002-y"}')
     assert "002-y/" in get("/gamma/jobs/")[1]

@@ -49,7 +49,8 @@ def load_projects():
             else:
                 name = out[slug]["name"]
         # The jobs directory appears with the first job; until then the board is empty.
-        out[slug] = {"name": name, "jobs": HOME / "work" / conf.parent.name / "jobs"}
+        out[slug] = {"name": name, "jobs": HOME / "work" / conf.parent.name / "jobs",
+                     "project": conf.parent.name}  # the page shows the central commands
     return out
 
 
@@ -59,7 +60,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/projects.json":
-            body = json.dumps([{"slug": s, "name": p["name"], "installed": p["jobs"] is not None}
+            body = json.dumps([{"slug": s, "name": p["name"], "installed": p["jobs"] is not None,
+                                "project": p.get("project")}
                                for s, p in self.projects.items()]).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
