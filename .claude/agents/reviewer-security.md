@@ -18,6 +18,10 @@ and Glob absolute paths under the worktree, and start any shell command you
 are able to run with `cd <worktree> && `. The job folder is in the main
 checkout; your one file goes there.
 
+## Tools
+
+The factory allows you Read, Grep and Glob; Bash only for `git log`, `git diff` and `git show`; and a write only to your one review file. Anything else is denied, so don't try it. Confirm a finding by reading the code, not by running it.
+
 ## Read
 
 1. `AGENTS.md` (or `CLAUDE.md`), plus any doc it says to read for the area the
