@@ -27,8 +27,8 @@ The user is the operator: the one person who sets policy and decides every job t
 3. A complexity increase above 50% on touched files blocks the PR for architecture review.
 4. At most three review-fix rounds per job.
 5. All secrets stay outside the sandbox.
-6. Always-stop rules by label and path outrank everything, including the Dev council.
-7. Autonomy is earned per project, on measured jobs on a real project. Until the Dev council has earned merge power, every job stops for the operator.
+6. Always-stop rules by label and path outrank everything, including the Dev council. A branch that fails the gate or touches a protected path does not merge in any mode.
+7. Autonomy is earned per project, on measured jobs on a real project. In the default mode, `supervised`, every job stops for the operator until the Dev council has earned merge power. Only a person can select FullAuto mode; no agent, and not the factory itself, can turn it on.
 8. Enforce in scripts and platform settings, not in prompts.
 9. Backpressure before forward pressure: checks, budgets and isolation land before anything that creates more work.
 10. This repo is public. Nothing in it names a real project, a private repo or a local path.
