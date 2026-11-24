@@ -182,7 +182,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 9)]
+               "state": "OPEN", "comments": []} for n in range(1, 10)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -330,7 +330,8 @@ def test_a_human_merge_label_stops_the_job_before_the_approver():
 
 def test_a_sensitive_path_raises_the_risk_and_stops_the_job():
     label(7)
-    assert factory("run", "demo", FAKE_TOUCH="package.json").returncode == 0
+    res = factory("run", "demo", FAKE_TOUCH="package.json")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(7)
     assert j["risk"] == "high" and j["intake"]["risk"] == "low", j  # the paths raise the tier; intake cannot lower it
     assert j["agents"]["reviewers"] == {"code": "sonnet", "security": "opus"}, j["agents"]
@@ -346,6 +347,22 @@ def test_low_risk_paths_and_the_council_slot():
     assert j["risk"] == "low" and j["agents"]["reviewers"] == {"code": "haiku"}, j  # every changed file is on a low path
     assert [e["to"] for e in events(8)][-3:] == ["approve", "council", "needs-human"]  # the Dev council's slot, empty for now
     assert j["stage"] == "needs-human" and "approver" in stages_run(8)
+
+
+def test_the_gate_runs_the_checks_with_the_build_cache_off():
+    # A cached PASS is not evidence (build plan learning 8): the gate's run turns the build caches off.
+    checks = (CONF / "checks.sh").read_text()
+    (CONF / "checks.sh").write_text('#!/usr/bin/env bash\ntest -f feature.txt\necho "cache: $FACTORY_GATE $TURBO_FORCE $NX_SKIP_NX_CACHE $MY_CACHE"\n'
+                                    'test "$FACTORY_GATE$TURBO_FORCE$NX_SKIP_NX_CACHE$MY_CACHE" = 1truetrueoff\n')
+    config(gate_env={"MY_CACHE": "off"})  # a project adds the switch for its own cache
+    label(9)
+    try:
+        assert factory("run", "demo").returncode == 0
+    finally:
+        (CONF / "checks.sh").write_text(checks)
+    j = job(9)
+    assert j["stage"] == "needs-human" and [e["gate"] for e in events(9) if e["to"] == "review"] == ["PASS"], j
+    assert "cache: 1 true true off" in (folder(9) / "round-1" / "checks.log").read_text()
 
 
 def test_status_lists_every_job():
