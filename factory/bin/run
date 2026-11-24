@@ -146,9 +146,9 @@ def watch(cmd, cwd, env):
     return how or ("ok" if p.returncode == 0 and not result.get("is_error") else "failed"), result, tail
 
 
-def run_agent(j, agent, message, model=None, resume=None, allow=None):
+def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None):
     """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly.
-    `allow` narrows what the agent's tools may do without asking; the rest is denied."""
+    `tools` narrows which tools exist, `allow` what they may do without asking; the rest is denied."""
     d = JOBS / j["id"]
     spent, budget = sum(r["cost_usd"] for r in usage(j)), j.get("budget_usd")
     if budget and spent >= budget:
@@ -170,7 +170,7 @@ def run_agent(j, agent, message, model=None, resume=None, allow=None):
             "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
             "--output-format", "stream-json", "--verbose", "--setting-sources", "project",
             "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
-            "--permission-mode", "dontAsk", "--tools", *definition["tools"],
+            "--permission-mode", "dontAsk", "--tools", *(tools or definition["tools"]),
             "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
     env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
     for wait in [0, *RETRY_WAITS]:
@@ -237,16 +237,25 @@ def review(j):
     def git(*args):
         return subprocess.run(["git", *args], cwd=j["worktree"], capture_output=True, text=True).stdout.strip()
 
+    # A reviewer runs no git: an allow rule such as `git diff *` also allows `--output=<file>`. The engine
+    # writes the change out for them to read.
+    span = f"origin/{CONFIG['base_branch']}...{commit}"
+    (rd / "changes.diff").write_bytes(b"".join(
+        subprocess.run(["git", *args], cwd=j["worktree"], capture_output=True, check=True).stdout
+        for args in (["log", "--oneline", span.replace("...", "..")], ["diff", "--no-color", "--no-ext-diff", "--no-textconv", span])))
+
     def one(r, extra="", resume=None):
         page = f" Port: {port(j, 1)}." if r in {"ux", "ui"} else ""
         path = rd / f"review-{r}.md"
-        # Read-only: a reviewer reads the repo and its history and writes its one review file. Under dontAsk
-        # everything else is denied. A page reviewer also gets node, to drive the browser; node can write,
-        # so the check below is what catches that.
+        # Read-only: a reviewer reads the repo and writes its one review file. It has no shell, except that a
+        # page reviewer gets node to drive the browser. node can write anywhere; the check below only catches
+        # writes to the branch and worktree.
         rule = re.sub(r"^(\w):", lambda m: "/" + m.group(1).lower(), path.as_posix())  # the CLI wants C:/x as /c/x
-        allow = ["Read", "Grep", "Glob", f"Edit(/{rule})", "Bash(git log *)", "Bash(git diff *)", "Bash(git show *)",
-                 *(["Bash(node *)"] if page else [])]
-        ok = run_agent(j, f"reviewer-{r}", f"Review round {n}.{page}{extra}", model=reviewers[r], resume=resume, allow=allow)
+        allow = ["Read", "Grep", "Glob", f"Edit(/{rule})", *(["Bash(node *)"] if page else [])]
+        tools = ["Read", "Grep", "Glob", "Write", *(["Bash"] if page else [])]
+        read = f" You cannot run git: the commits and the diff are in round-{n}/changes.diff."
+        ok = run_agent(j, f"reviewer-{r}", f"Review round {n}.{page}{read}{extra}", model=reviewers[r], resume=resume,
+                       allow=allow, tools=tools)
         if path.exists():  # the engine records which commit the verdict is for, as the gate does in checks.md
             verdict, _, rest = path.read_text().partition("\n")
             path.write_text(f"{verdict}\nCOMMIT: {commit}\n" + re.sub(r"\ACOMMIT:.*\n", "", rest))

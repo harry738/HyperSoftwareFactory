@@ -237,7 +237,7 @@ def test_run_takes_an_issue_to_a_pr_waiting_for_the_operator():
     reviewer = made[3]["args"]
     assert reviewer[reviewer.index("--model") + 1] == "sonnet"  # intake said low, but no path rule matched: medium
     tools = reviewer[reviewer.index("--tools") + 1:reviewer.index("--allowedTools")]
-    assert tools == ["Read", "Grep", "Glob", "Bash", "Write"], tools  # the reviewer's own tools and no others
+    assert tools == ["Read", "Grep", "Glob", "Write"], tools  # the reviewer's own tools less its shell, and no others
     assert reviewer[reviewer.index("--max-turns") + 1] == "300" and reviewer[reviewer.index("--max-budget-usd") + 1] == "5"
     assert (HOME / "setup-ran.txt").read_text().split() == ["ran"], "setup.sh should run once per worktree"
     assert not (HOME / "work" / "demo" / "repo" / "factory").exists(), "nothing of the factory belongs in the project's repo"
@@ -248,7 +248,10 @@ def test_reviewers_get_read_only_tools():
     builder, reviewer = (allowed(c["args"]) for c in calls()[2:4])
     own_file = reviewer[3]  # all a reviewer may write: its review file for this round
     assert own_file.startswith("Edit(//") and own_file.endswith("/001-add-feature-1/round-1/review-code.md)"), own_file
-    assert reviewer == ["Read", "Grep", "Glob", own_file, "Bash(git log *)", "Bash(git diff *)", "Bash(git show *)"], reviewer
+    assert reviewer == ["Read", "Grep", "Glob", own_file], reviewer
+    args = calls()[3]["args"]
+    assert "Bash" not in args[args.index("--tools") + 1:args.index("--allowedTools")], args  # no shell at all
+    assert "+++ b/feature.txt" in (folder(1) / "round-1" / "changes.diff").read_text()
     assert builder == ["Read", "Grep", "Glob", "Bash", "Edit", "Write"], builder  # other stages keep their own tools
 
 
