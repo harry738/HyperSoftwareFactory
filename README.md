@@ -121,7 +121,7 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 | E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, and a feedback loop from the PR | In code and tested with stand-ins |
 | E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine; a gate that runs with the build cache off | In code and tested with stand-ins |
 | E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Not started |
-| E5 | Concurrency, a daily budget, a scheduled run | Not started |
+| E5 | Concurrency, a daily budget, a scheduled run | Daily budget in code and tested with stand-ins; the rest not started |
 | E6 | Network allowlist, the container, and removal of the old per-repo path | Not started |
 
 Then the features, in order:

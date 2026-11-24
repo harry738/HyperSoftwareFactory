@@ -182,7 +182,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 10)]
+               "state": "OPEN", "comments": []} for n in range(1, 11)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -363,6 +363,18 @@ def test_the_gate_runs_the_checks_with_the_build_cache_off():
     j = job(9)
     assert j["stage"] == "needs-human" and [e["gate"] for e in events(9) if e["to"] == "review"] == ["PASS"], j
     assert "cache: 1 true true off" in (folder(9) / "round-1" / "checks.log").read_text()
+
+
+def test_the_daily_budget_pauses_the_run_and_the_job_waits():
+    spent = sum(json.loads(r)["cost_usd"] for f in JOBS.glob("*/usage.jsonl") for r in f.read_text().splitlines())
+    config(daily_budget_usd=round(spent + 0.02, 2))  # room for two more stages today
+    label(10)
+    res = factory("run", "demo")
+    assert res.returncode == 0 and "daily budget" in res.stdout, res.stdout + res.stderr
+    j = job(10)
+    assert j["stage"] == "build" and stages_run(10) == ["intake", "spec-writer"], j  # paused, not handed to a person
+    config(daily_budget_usd=100)
+    assert factory("run", "demo").returncode == 0 and job(10)["stage"] == "needs-human", job(10)
 
 
 def test_status_lists_every_job():

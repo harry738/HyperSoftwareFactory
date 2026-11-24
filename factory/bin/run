@@ -17,6 +17,10 @@ Every stage has limits, set in config.json: a wall-clock timeout, a stall limit
 across all its stages. Hitting any of them hands the job to a person
 (`job stop`); `job retry` puts it back. A stage that fails for a passing reason,
 such as a rate limit, is tried again after a wait.
+
+A project can also have a daily budget (`daily_budget_usd`, UTC days). Once
+today's spend across all its jobs reaches it, the run ends before the next stage
+and every job stays where it is, for the next run to pick up.
 """
 
 import json
@@ -29,6 +33,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 import proc
@@ -47,6 +52,7 @@ MAX_TURNS = CONFIG.get("stage_max_turns", 300)
 STAGE_BUDGET = CONFIG.get("stage_budget_usd", 5)
 RETRY_WAITS = CONFIG.get("retry_waits_seconds", [30, 120, 480])
 TRANSIENT = re.compile(r"rate.?limit|overloaded|\b(429|500|502|503|529)\b|ECONNRESET|ETIMEDOUT|temporarily unavailable", re.I)
+DAILY_BUDGET = CONFIG.get("daily_budget_usd")  # None: no daily cap
 DONE = {"merged", "rejected", "needs-info", "needs-human"}
 TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 
@@ -94,6 +100,20 @@ def port(j, offset):
 def usage(j):
     path = JOBS / j["id"] / "usage.jsonl"
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def spent_today():
+    """The project's spend today, across every job. Rows from before E5.2 have no day and don't count."""
+    return round(sum(r["cost_usd"] for f in JOBS.glob("*/usage.jsonl")
+                     for r in map(json.loads, f.read_text().splitlines()) if r.get("day") == today()), 2)
+
+
+class DailyBudget(Exception):
+    """Today's spend reached daily_budget_usd: end the run and leave every job where it is."""
 
 
 # ---- Headless agents --------------------------------------------------------
@@ -152,6 +172,9 @@ def run_agent(j, agent, message, model=None, resume=None):
     spent, budget = sum(r["cost_usd"] for r in usage(j)), j.get("budget_usd")
     if budget and spent >= budget:
         return stop(j, f"The job has spent ${spent:.2f} of its ${budget:.2f} budget, before the {agent} stage.")
+    if DAILY_BUDGET is not None and spent_today() >= DAILY_BUDGET:
+        raise DailyBudget(f"The project has spent ${spent_today():.2f} of its ${DAILY_BUDGET:.2f} daily budget today, "
+                          f"before {j['id']}'s {agent} stage. Every job waits for tomorrow's run.")
     definition = agent_definition(agent)
     definition["model"] = model or definition["model"]
     worktree = Path(j["worktree"])
@@ -181,7 +204,7 @@ def run_agent(j, agent, message, model=None, resume=None):
         with (d / "usage.jsonl").open("a") as f:
             f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": how == "ok",
                                 "how": how, "cost_usd": result.get("total_cost_usd") or 0,
-                                "session": result.get("session_id"), "seconds": int(time.monotonic() - start)}) + "\n")
+                                "session": result.get("session_id"), "seconds": int(time.monotonic() - start), "day": today()}) + "\n")
         if how != "failed" or "max_" in str(result.get("subtype")) or not TRANSIENT.search(said):
             break
         say(j, f"{agent} failed for a passing reason ({said}); trying again")
@@ -346,8 +369,12 @@ def main(argv):
             failed.add(int(issue))
             continue
         touched.append(job_id)
-        if not process(job_id):
-            failed.add(int(issue))
+        try:
+            if not process(job_id):
+                failed.add(int(issue))
+        except DailyBudget as e:
+            print(e, flush=True)
+            break
     if touched:
         print(job("summary", *dict.fromkeys(touched))[1], flush=True)
     sys.exit(1 if failed else 0)

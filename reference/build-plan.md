@@ -120,7 +120,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E4.5 | A reviewer that ends without writing its review file is sent back once in the same run, as a review without evidence already is | Open. Today `job` refuses the round and the job waits for the next run |
 | **E5** | **Throughput** | |
 | E5.1 | `concurrency` 2, then 3, starting with jobs on disjoint packages | Open |
-| E5.2 | Daily USD budget per project | Open |
+| E5.2 | Daily USD budget per project | Done: `daily_budget_usd` in `config.json` (UTC days, 50 in the template). When today's spend across the project's jobs reaches it, `run` ends before the next stage and every job stays where it is for the next run |
 | E5.3 | A scheduled run | Open |
 | E5.4 | After a merge, the engine re-checks the project's open factory PRs for conflicts and starts a merge-main round for each | Open |
 | **E6** | **The container** | |
