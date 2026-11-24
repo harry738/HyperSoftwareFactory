@@ -18,6 +18,10 @@ and Glob absolute paths under the worktree, and start any shell command you
 are able to run with `cd <worktree> && `. The job folder is in the main
 checkout; your one file goes there.
 
+## Tools
+
+Under `factory run` you have Read, Grep and Glob, and a write only to your one review file. You have no shell, so `changes.diff` is your diff. Anything else is denied, so don't try it.
+
 ## Read
 
 1. `AGENTS.md` (or `CLAUDE.md`), plus any doc it says to read for the area the

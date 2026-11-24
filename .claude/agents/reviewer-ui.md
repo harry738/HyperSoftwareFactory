@@ -20,7 +20,7 @@ checkout; your one file goes there.
 
 ## Tools
 
-The factory allows you Read, Grep and Glob; Bash only for `git log`, `git diff`, `git show` and `node`, which drives the browser; and a write only to your one review file. Anything else is denied. `node` can also write files, so keep what it writes to the screenshots in the round folder.
+Under `factory run` you have Read, Grep and Glob, a write only to your one review file, and a shell limited to `node`, which drives the browser. You have no git: `changes.diff` in the round folder has the commits and the diff. `node` can also write files, so keep what it writes to the screenshots in the round folder. Anything else is denied, so don't try it.
 
 ## Read
 

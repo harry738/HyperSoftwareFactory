@@ -20,7 +20,7 @@ checkout; your one file goes there.
 
 ## Tools
 
-The factory allows you Read, Grep and Glob; Bash only for `git log`, `git diff` and `git show`; and a write only to your one review file. Anything else is denied, so don't try it. Confirm a finding by reading the code, not by running it.
+Under `factory run` you have Read, Grep and Glob, and a write only to your one review file. You have no shell, so `changes.diff` is your diff. Anything else is denied, so don't try it. Confirm a finding by reading the code, not by running it.
 
 ## Read
 
