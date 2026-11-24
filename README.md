@@ -270,6 +270,7 @@ None of these is wired in yet, and their claims are the vendors' own.
 ## Development
 
 ```bash
+bash scripts/test.sh                     # every test file below, stopping at the first failure; CI runs this
 python scripts/test_factory_onboard.py   # self-check for the onboarding script
 python factory/test_factory.py           # factory script checks; run inside a Node project after `npm ci`
 python factory/test_run.py               # the central layout end to end, with stand-ins for GitHub and the model
