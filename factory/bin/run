@@ -146,8 +146,9 @@ def watch(cmd, cwd, env):
     return how or ("ok" if p.returncode == 0 and not result.get("is_error") else "failed"), result, tail
 
 
-def run_agent(j, agent, message, model=None, resume=None):
-    """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly."""
+def run_agent(j, agent, message, model=None, resume=None, allow=None):
+    """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly.
+    `allow` narrows what the agent's tools may do without asking; the rest is denied."""
     d = JOBS / j["id"]
     spent, budget = sum(r["cost_usd"] for r in usage(j)), j.get("budget_usd")
     if budget and spent >= budget:
@@ -170,7 +171,7 @@ def run_agent(j, agent, message, model=None, resume=None):
             "--output-format", "stream-json", "--verbose", "--setting-sources", "project",
             "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
             "--permission-mode", "dontAsk", "--tools", *definition["tools"],
-            "--allowedTools", *definition["tools"], "--add-dir", d.as_posix(), REPO.as_posix()]
+            "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
     env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
     for wait in [0, *RETRY_WAITS]:
         time.sleep(wait)
@@ -227,19 +228,39 @@ def build(j):
 
 
 def review(j):
-    rd = JOBS / j["id"] / f"round-{j['round']}"
+    n = j["round"]
+    rd = JOBS / j["id"] / f"round-{n}"
     job("serve", j["id"])  # starts the shared review dev server again if it died
     reviewers = j["agents"]["reviewers"]
+    commit = re.search(r"^COMMIT: (\w+)", (rd / "checks.md").read_text(), re.M).group(1)  # what the gate passed
 
-    def one(r, extra=""):
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=j["worktree"], capture_output=True, text=True).stdout.strip()
+
+    def one(r, extra="", resume=None):
         page = f" Port: {port(j, 1)}." if r in {"ux", "ui"} else ""
-        return run_agent(j, f"reviewer-{r}", f"Review round {j['round']}.{page}{extra}", model=reviewers[r])
+        path = rd / f"review-{r}.md"
+        # Read-only: a reviewer reads the repo and its history and writes its one review file. Under dontAsk
+        # everything else is denied. A page reviewer also gets node, to drive the browser; node can write,
+        # so the check below is what catches that.
+        rule = re.sub(r"^(\w):", lambda m: "/" + m.group(1).lower(), path.as_posix())  # the CLI wants C:/x as /c/x
+        allow = ["Read", "Grep", "Glob", f"Edit(/{rule})", "Bash(git log *)", "Bash(git diff *)", "Bash(git show *)",
+                 *(["Bash(node *)"] if page else [])]
+        ok = run_agent(j, f"reviewer-{r}", f"Review round {n}.{page}{extra}", model=reviewers[r], resume=resume, allow=allow)
+        if path.exists():  # the engine records which commit the verdict is for, as the gate does in checks.md
+            verdict, _, rest = path.read_text().partition("\n")
+            path.write_text(f"{verdict}\nCOMMIT: {commit}\n" + re.sub(r"\ACOMMIT:.*\n", "", rest))
+        return ok
 
     missing = [r for r in reviewers if not (rd / f"review-{r}.md").exists()]
     with ThreadPoolExecutor(max_workers=len(missing) or 1) as pool:  # reviewers run in parallel; wait for all
         if not all(list(pool.map(one, missing))):
             return False
     for attempt in (1, 2):
+        heads, dirty = set(git("rev-parse", "HEAD", j["branch"]).split()), git("status", "--porcelain")
+        if heads != {commit} or dirty:  # a reviewer edited what it was reviewing: its verdict is for another state
+            return stop(j, f"The branch or working tree changed during review round {n}. Reviewers read commit "
+                           f"{commit}; the branch is now at {', '.join(sorted(heads))}. Uncommitted changes: {dirty or 'none'}.")
         job("sync", j["id"])
         verdicts = set(load(j["id"])["reviews"].values())
         target = "needs-human" if "BLOCKED" in verdicts else "build" if "CHANGES" in verdicts else "approve"
@@ -249,10 +270,12 @@ def review(j):
             return True
         if target == "build" and "go to needs-human" in why:  # that was the last round
             return advance(j, "needs-human")
-        thin = re.findall(r"review-(\w+)\.md has no", why)  # a review that cites no evidence goes back once
-        if attempt == 2 or not thin:
+        # A reviewer that wrote no review file, or one that cites no evidence, goes back once.
+        back = [r for r in reviewers if not (rd / f"review-{r}.md").exists()] or re.findall(r"review-(\w+)\.md has no", why)
+        if attempt == 2 or not back:
             return say(j, why)
-        if not all(one(r, f" The factory refused your review: {why}") for r in thin):
+        if not all(one(r, f" The factory could not accept your review: {why}. Write review-{r}.md.",
+                       last_session(j, f"reviewer-{r}")) for r in back):
             return False
 
 

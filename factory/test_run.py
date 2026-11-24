@@ -104,8 +104,15 @@ elif agent == "builder":
     subprocess.run(git + ["commit", "-q", "-m", "Add feature"], check=True)
     (folder / "build.md").write_text("STATUS: READY\n\n## Summary\n- added feature.txt\n")
 elif agent.startswith("reviewer-"):
-    (rd / ("review-%s.md" % agent.split("-", 1)[1])).write_text(
-        "VERDICT: PASS\n\n## Summary\n- fine\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n")
+    if os.environ.get("FAKE_SILENT") == agent and not (folder / "silent-done").exists():
+        (folder / "silent-done").write_text("")  # replies with its verdict, writes no review file
+    else:
+        (rd / ("review-%s.md" % agent.split("-", 1)[1])).write_text(
+            "VERDICT: PASS\n\n## Summary\n- fine\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n")
+    if os.environ.get("FAKE_EDIT") == agent:  # a reviewer that commits to the branch it reviews
+        (worktree / "feature.txt").write_text("edited by a reviewer\n")
+        subprocess.run(["git", "-C", str(worktree), "-c", "user.email=r@example.test", "-c", "user.name=reviewer",
+                        "commit", "-q", "-am", "Reviewer edit"], check=True)
 elif agent == "approver":
     (folder / "decision.md").write_text("APPROVE\n\n## Why\nMeets the spec.\n")
 print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "done", "total_cost_usd": 0.01, "session_id": "s-" + agent}))
@@ -116,7 +123,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -182,7 +189,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 9)]
+               "state": "OPEN", "comments": []} for n in range(1, 11)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -234,6 +241,15 @@ def test_run_takes_an_issue_to_a_pr_waiting_for_the_operator():
     assert reviewer[reviewer.index("--max-turns") + 1] == "300" and reviewer[reviewer.index("--max-budget-usd") + 1] == "5"
     assert (HOME / "setup-ran.txt").read_text().split() == ["ran"], "setup.sh should run once per worktree"
     assert not (HOME / "work" / "demo" / "repo" / "factory").exists(), "nothing of the factory belongs in the project's repo"
+
+
+def test_reviewers_get_read_only_tools():
+    allowed = lambda a: a[a.index("--allowedTools") + 1:a.index("--add-dir")]
+    builder, reviewer = (allowed(c["args"]) for c in calls()[2:4])
+    own_file = reviewer[3]  # all a reviewer may write: its review file for this round
+    assert own_file.startswith("Edit(//") and own_file.endswith("/001-add-feature-1/round-1/review-code.md)"), own_file
+    assert reviewer == ["Read", "Grep", "Glob", own_file, "Bash(git log *)", "Bash(git diff *)", "Bash(git show *)"], reviewer
+    assert builder == ["Read", "Grep", "Glob", "Bash", "Edit", "Write"], builder  # other stages keep their own tools
 
 
 def test_every_stage_change_is_in_the_event_log():
@@ -346,6 +362,32 @@ def test_low_risk_paths_and_the_council_slot():
     assert j["risk"] == "low" and j["agents"]["reviewers"] == {"code": "haiku"}, j  # every changed file is on a low path
     assert [e["to"] for e in events(8)][-3:] == ["approve", "council", "needs-human"]  # the Dev council's slot, empty for now
     assert j["stage"] == "needs-human" and "approver" in stages_run(8)
+
+
+def test_a_reviewer_that_writes_no_review_file_is_sent_back_once():
+    label(9)
+    res = factory("run", "demo", FAKE_SILENT="reviewer-code")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert job(9)["stage"] == "needs-human" and "stopped_in" not in job(9), job(9)  # in the same run
+    assert stages_run(9).count("reviewer-code") == 2, stages_run(9)
+    again = [c for c in calls() if c["agent"] == "reviewer-code"][-1]["args"]
+    assert "Write review-code.md" in again[again.index("-p") + 1], again
+    assert again[again.index("--resume") + 1] == "s-reviewer-code", "the reviewer's own session should be sent back"
+
+
+def test_a_reviewer_that_changes_the_branch_stops_the_job():
+    label(10)
+    assert factory("run", "demo", FAKE_EDIT="reviewer-code").returncode == 0
+    j = job(10)
+    assert j["stage"] == "needs-human" and j["stopped_in"] == "review", j
+    assert "changed during review round 1" in gh_state()["prs"][-1]["comments"][-1]["body"]
+    gated = (folder(10) / "round-1" / "checks.md").read_text().splitlines()[1]
+    review = (folder(10) / "round-1" / "review-code.md").read_text().splitlines()
+    assert gated.startswith("COMMIT: ") and review[:2] == ["VERDICT: PASS", gated], review  # the commit it read
+    job_cmd("retry", "10")  # by hand, past the engine's check: `job` won't apply the verdict to the later commit
+    res = subprocess.run([sys.executable, str(BIN / "job"), "advance", "10", "approve"],
+                         env=env(FACTORY_PROJECT="demo"), capture_output=True, text=True)
+    assert res.returncode != 0 and "written for another commit" in res.stdout + res.stderr, res.stdout + res.stderr
 
 
 def test_status_lists_every_job():
