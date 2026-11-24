@@ -1,113 +1,131 @@
 <div align="center">
 
-# 🏭 HyperSoftwareFactory
+<img src="docs/assets/readme-banner.svg" width="100%" alt="HyperSoftwareFactory — Build with agents. Verify with evidence." />
 
-**A software factory for building, verifying, and merging software with AI agents, and a reference architecture for where it is going.**
+# HyperSoftwareFactory
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Factory: GPLv3](https://img.shields.io/badge/factory-GPLv3-blue.svg)](factory/LICENSE)
-[![Python](https://img.shields.io/badge/python-3.x-3776AB?logo=python&logoColor=white)](requirements.txt)
-[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
-[![GitHub](https://img.shields.io/badge/GitHub-issues%20%E2%86%92%20PRs-181717?logo=github)](https://github.com/harry738/HyperSoftwareFactory/issues)
-<br>
-[![Status](https://img.shields.io/badge/status-pilot-orange.svg)](reference/binley/pilot-report-2026-11-21.md)
-[![Autonomy](https://img.shields.io/badge/autonomy-working%20toward%20L1-yellow.svg)](#autonomy-levels)
-[![Roadmap](https://img.shields.io/badge/roadmap-step%201%20of%206-lightgrey.svg)](#roadmap)
-[![Last commit](https://img.shields.io/github/last-commit/harry738/HyperSoftwareFactory)](https://github.com/harry738/HyperSoftwareFactory/commits/main)
+**An open-source, agent-driven software factory. Governed by code. Verified with evidence.**
 
-[Summary](#summary) · [Working factory](#the-working-factory) · [Roadmap](#roadmap) · [Architecture](#target-architecture) · [Autonomy](#autonomy-levels) · [Contributing](#contributing)
+Convert labelled GitHub issues into scoped changes, independently reviewed pull requests and operator-controlled decisions, across projects from one central factory.
+
+[![CI](https://github.com/harry738/HyperSoftwareFactory/actions/workflows/tests.yml/badge.svg)](https://github.com/harry738/HyperSoftwareFactory/actions/workflows/tests.yml)
+[![Pilot](https://img.shields.io/badge/status-pilot-54e0b1?style=flat-square&labelColor=172033)](reference/build-plan.md)
+[![Python](https://img.shields.io/badge/Python-3.x-8eabff?style=flat-square&labelColor=172033)](requirements.txt)
+[![MIT](https://img.shields.io/badge/root-MIT-8eabff?style=flat-square&labelColor=172033)](LICENSE)
+[![GPLv3](https://img.shields.io/badge/engine-GPLv3-54e0b1?style=flat-square&labelColor=172033)](factory/LICENSE)
+
+[Overview](#overview) · [Quick start](#quick-start) · [Workflow](#the-working-factory) · [Roadmap](#roadmap) · [Architecture](#target-architecture) · [Contribute](#contributing)
 
 </div>
 
----
+> [!IMPORTANT]
+> **Working pilot, not a production-autonomy claim.** The central runner has passed end-to-end tests using GitHub and model stand-ins, but its first run on a real project remains open. Binley is a fictional demonstrator. Container isolation, Dev council, deploy/rollback and external signal intake are planned. [Current implementation status](reference/build-plan.md).
 
-## Summary
+## Overview
 
-HyperSoftwareFactory turns work requests into reviewed, merged pull requests with a team of AI agents, and earns more autonomy only as measured jobs prove it safe.
+HyperSoftwareFactory is a **central control plane for agent-assisted software delivery**. A deterministic script owns orchestration; specialist agents write and review changes; project-defined gates and policy control outcomes.
 
-- **Today:** a GitHub issue labelled `factory` goes through intake, spec, build, a deterministic gate, independent reviewers (code, security, UI, UX) and an approver. Each issue becomes one PR, which is merged, sent back for changes, or escalated to a human.
-- **Tomorrow:** raw signals (social links, bug reports, feedback, alerts) come in, and deployed, monitored software goes out, with council gates on risky decisions and a weekly Kaizen loop that improves the factory from its own event log.
-- **The principle:** no unreviewed output, evidence over "PASS", hard caps on loops and spend, and secrets kept outside the sandbox.
+<div align="center">
 
-### The vision
+<img src="docs/assets/factory-flow.gif" alt="Animated data flow from labelled GitHub issue through intake, spec, build, verification and decision; failed work loops back and human decisions are escalated." width="100%" />
 
-```mermaid
-flowchart LR
-    subgraph IN["Inputs"]
-        direction TB
-        I1["GitHub issues"]
-        I2["Bug reports"]
-        I3["Social links and feedback"]
-        I4["Production alerts"]
-    end
+<sub>Illustrative flow. The scripts and state machine define actual job transitions.</sub>
 
-    subgraph HSF["HyperSoftwareFactory"]
-        direction TB
-        A["Agents<br/>intake · spec · build"]
-        V["Independent verifiers<br/>code · security · UI · UX"]
-        G["Gates and approver<br/>risk-tiered decisions"]
-        A --> V --> G
-    end
+</div>
 
-    subgraph OUT["Outputs"]
-        direction TB
-        O1["Merged PRs"]
-        O2["Deployed software"]
-        O3["Monitoring"]
-    end
+| **Build deliberately** | **Verify independently** | **Earn autonomy** |
+| :--- | :--- | :--- |
+| One issue, one pull request and one persisted job record. | Deterministic checks and routed code, security, UI and UX review. | Bounded rework, budget limits, policy decisions and measured evidence. |
 
-    IN --> HSF --> OUT
-    O3 -. "events, failures, cost" .-> K["Weekly Kaizen"]
-    K -. "improvements" .-> HSF
-    H(("Operator")) -. "sets policy,<br/>approves high risk" .-> G
+**Implemented in code:** central CLI, worktrees, headless agents, risk/path routing, stage and job budgets, checks, reviews, PR feedback and append-only events. **Not yet proven:** the full central runner on a real project, hardened isolation, live deployment and autonomous operations.
 
-    classDef built fill:#d4edda,stroke:#28a745,color:#000
-    classDef planned fill:#f8f9fa,stroke:#adb5bd,stroke-dasharray:4 3,color:#000
-    class I1,A,V,G,O1 built
-    class I2,I3,I4,O2,O3,K planned
+## Quick start
+
+**Requirements:** Python 3, Git, a signed-in GitHub CLI (`gh`), a signed-in Claude Code CLI and a target repository with useful tests and CI. The source is free, although model/API execution may incur costs. Linux/WSL is the current engine target; Docker packaging is planned.
+
+```bash
+git clone https://github.com/harry738/HyperSoftwareFactory.git
+cd HyperSoftwareFactory
+python -m pip install -r requirements.txt
+
+export FACTORY_HOME="$HOME/factory-home"
+python factory/bin/factory onboard your-org/project-alpha
 ```
 
-<sub>Green: working today. Dashed: target architecture, not built yet.</sub>
+Onboarding creates a private project clone, configuration and readiness checklist. **Before running**, implement `$FACTORY_HOME/projects/project-alpha/checks.sh` (the template fails until configured), review `config.json` and its protected/sensitive paths and budgets, and enable required CI and branch protection. Provide `AGENTS.md` or `CLAUDE.md` and `CONTEXT.md` in the project repository. Keep the private factory home **outside public repositories**.
 
-> **Status.** Two things live here:
-> - **A working factory** in `factory/` and `.claude/`: issue → intake → spec → build → gate → review → approve → merge. It was validated on Binley, a fictional demonstrator used to test the idea: 11 jobs, now closed (the first is written up in the [pilot report](reference/binley/pilot-report-2026-11-21.md)). It has not yet run on a real project.
-> - **A plan to make it a central factory** in `reference/`: one container that serves every project, a Dev council, deploy, and a Kaizen loop. Those parts are not built. The [build plan](reference/build-plan.md) says what exists, what is next, and in what order. The [reference architecture](reference/software-factory-reference-architecture.md) is the longer-term vision.
+Label an issue `factory`, then:
 
----
+```bash
+python factory/bin/factory run project-alpha       # queued issues
+python factory/bin/factory run project-alpha 42    # issue #42
+python factory/bin/factory status project-alpha    # jobs and progress
+```
+
+**Supervised by default:** `unattended_merge` is `false` in the factory template. Operator approval and target-repository branch protection still matter. An operator-selectable FullAuto mode is described in the [build plan](reference/build-plan.md#fullauto-mode); it should not be mistaken for validated production capability.
 
 ## The working factory
 
-`factory/` and `.claude/` are the factory as it ran on the Binley Building Society demonstrator, a fictional case used to validate the idea. `/factory run` takes every open issue labelled `factory` through intake → spec → build → gate → review → approve, one PR per issue, with state in `factory/jobs/` and `factory/bin/job` as its only writer.
+The scripted loop (`factory/bin/run`) invokes headless agent sessions; `factory/bin/job` manages durable job transitions. The engine owns GitHub API operations, while agent stage environments are stripped of GitHub tokens.
 
 ```mermaid
 flowchart LR
-    ISSUE["GitHub issue<br/>label: factory"] --> INTAKE["Intake"]
-    INTAKE --> SPEC["Spec writer"]
-    SPEC --> BUILD["Builder"]
-    BUILD --> GATE{"Gate<br/>checks.sh ·<br/>protected paths"}
-    GATE -- fail --> BUILD
-    GATE -- pass --> REVIEW
-
-    subgraph REVIEW["Independent review"]
-        direction TB
-        RC["Code"]
-        RS["Security"]
-        RU["UI"]
-        RX["UX"]
-    end
-
-    REVIEW --> APPROVE{"Approver"}
-    APPROVE -- "MERGE" --> MERGED(["PR merged"])
-    APPROVE -- "CHANGES<br/>max 3 rounds" --> BUILD
-    APPROVE -- "ESCALATE" --> HUMAN(["Operator decides"])
+    I["GitHub issue"] --> T["Intake"]
+    T --> S["Specification"]
+    S --> B["Builder / worktree"]
+    B --> G{"Deterministic gate"}
+    G -- FAIL --> B
+    G -- PASS --> R["Independent reviewers"]
+    R -- CHANGES --> B
+    R -- ACCEPT --> A{"Approver / policy"}
+    A -- "Human required" --> H["Operator"]
+    A -- "Allowed" --> P["Pull request / merge"]
+    H --> P
+    P -. "CI and review feedback" .-> T
+    classDef agent fill:#eef4ff,stroke:#6682b5,color:#172033
+    classDef assure fill:#e7f8f1,stroke:#218364,color:#14523f
+    classDef human fill:#fff4df,stroke:#b78329,color:#684a17
+    class I,T,S,B agent
+    class G,R,A,P assure
+    class H human
 ```
 
-- **Install into a project (the current path; the build plan replaces it with a central factory):** copy `factory/` and `.claude/` into the target repo (if it already has a `.claude/`, add only `agents/`, `skills/factory/` and `hooks/no-hand-merge.py`), then write the project's checks into `factory/checks.sh` (it fails until you do) and set `protected_paths`, `sensitive_paths` (files that always get the security reviewer), `dev_server` (the command the UI and UX reviewers browse, `{port}` filled in; Next.js by default, drop it if there are no pages), models and prices in `factory/config.json`. Copy `factory/settings.example.json` to `.claude/settings.json` and add your package manager's commands: it allows the factory scripts, denies `gh pr merge`, and blocks hand merges with a hook. The agents read what belongs in the project, its rules, users and design system from its `AGENTS.md` or `CLAUDE.md`. Binley's `checks.sh` and `config.json` are in `reference/binley/` as a worked example.
-- **Central factory (build plan E1, replacing the install above):** set `FACTORY_HOME` to a folder outside any public repo, then `factory/bin/factory onboard <owner/repo>` clones the project, creates its config folder and prints a readiness checklist; `factory/bin/factory run <project>` works its queue with one headless Claude Code run per stage; `factory/bin/factory status` lists jobs. Nothing is copied into the project repo, agents run without the GitHub token, and every approved job waits for a person to merge (`unattended_merge` is off). Each stage has a time limit, a stall limit, a turn cap and a cost cap, and each job a budget; hitting one hands the job to a person (`job retry` puts it back). To ask for another round, comment on the PR starting with `/factory`. A `human-merge` label or a change under `sensitive_paths` always goes to a person, and the risk tier comes from the changed paths (`risk_paths`), which intake can raise but not lower.
-- **Dashboard:** `cd factory && python -m http.server`, then open http://localhost:8000/dashboard.html. A live board of every job by stage, with gate and reviewer verdicts, cost and time, and each job's files in a drawer.
-- **Every project in one dashboard:** from this repo, `python scripts/factory-dashboard.py`, then open http://localhost:8020/. One tab and one board per project in `config/projects.yaml`; each tab shows how many jobs are running and how many wait on you. A project's board needs `path:` set to its local checkout (the one with `factory/` in it).
-- **Windows:** the scripts carry patches marked `# binley:` (see `factory/bin/proc.py` and `factory/test_factory.py`). Setup notes are in [`reference/binley/running-the-factory.md`](reference/binley/running-the-factory.md).
-- **Evidence so far:** 11 jobs finished on Binley by 22 Nov 2026: ten merged, one rejected at intake. The pilot was merged by hand after a Windows gate fault; after it the factory merged one PR itself, sent one job back for a CHANGES round, and escalated eight to a human, all under the project's always-stop rules. No job failed the gate. This shows the mechanism works, not that it can be trusted: Binley has no production and no users. Only the first job has a written report, the [pilot report](reference/binley/pilot-report-2026-11-21.md); the [build plan](reference/build-plan.md) has the rest of the numbers and the learnings carried forward.
+**Recovery:** gate failures and reviewer-requested changes trigger bounded repair (three rounds by default); risk policy can hand work to the operator. A reviewer verdict alone does not override protected paths or required CI. Reviewer read-only isolation and host/network sandboxing remain hardening work.
+
+### Central multi-project model
+
+```mermaid
+flowchart TB
+    C["Factory CLI / scripted controller"] --> F["Private FACTORY_HOME"]
+    F --> A["Project A: config + checks"]
+    F --> B["Project B: config + checks"]
+    C --> WA["Project A: clone + worktrees"]
+    C --> WB["Project B: clone + worktrees"]
+    A -. "policy" .-> WA
+    B -. "policy" .-> WB
+    WA --> GA["Agents / gate / PR"]
+    WB --> GB["Agents / gate / PR"]
+    GA --> E["Job records + event log"]
+    GB --> E
+    classDef central fill:#142238,stroke:#8eabff,color:#edf3fc
+    classDef project fill:#102e2b,stroke:#54e0b1,color:#edf3fc
+    class C,F,E central
+    class A,B,WA,WB,GA,GB project
+```
+
+Project rules stay outside the builder's worktree. This is a **logical separation**, not a claim of container-enforced isolation.
+
+### Dashboard and development checks
+
+```bash
+bash scripts/test.sh
+
+cd factory
+python -m http.server --bind 127.0.0.1 8000
+# Open http://localhost:8000/dashboard.html
+```
+
+The older registry-based multi-project dashboard is available via `python scripts/factory-dashboard.py`, configured with local project paths in `config/projects.yaml`. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
 
 ## Roadmap
 
@@ -168,6 +186,9 @@ The registry is `config/projects.yaml`. It is gitignored, because this repo is p
 The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
 
 ## Target architecture
+
+**Design direction, not live deployment:** external signals, council decisions, deployment, monitoring and Kaizen remain target-state capabilities. Dashed diagram paths signify planned control/feedback.
+
 
 ```mermaid
 flowchart LR
@@ -272,11 +293,10 @@ None of these is wired in yet, and their claims are the vendors' own.
 ## Development
 
 ```bash
-bash scripts/test.sh                     # every test file below, stopping at the first failure; CI runs this
-python scripts/test_factory_onboard.py   # self-check for the onboarding script
-python factory/test_factory.py           # factory script checks; run inside a Node project after `npm ci`
-python factory/test_run.py               # the central layout end to end, with stand-ins for GitHub and the model
+bash scripts/test.sh
 ```
+
+This is the supported test entry point and is also used by CI. It runs Python script tests, including the central runner with stand-ins; Windows-specific tests are skipped on non-Windows systems. See [AGENTS.md](AGENTS.md) for the conventions.
 
 ## Contributing
 
