@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.1 (2026-11-23) — sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.2 (2026-11-24) — adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -47,6 +47,8 @@ All state stays in the factory and GitHub, so a Hermes outage loses nothing.
 
 Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (about $2.50 a job in agent cost): ten merged, one rejected at intake. The factory merged one PR itself; a person merged the other nine, eight of them because the approver escalated under the project's always-stop rules. One job went through a CHANGES round, five ran the security reviewer, and none failed the gate. Only the first job has a written report ([pilot report](binley/pilot-report-2026-11-21.md)).
 
+A second overnight run on 23 Nov put 18 more jobs through for $90.15, at `concurrency` 1. A job took between 15 minutes and 1.5 hours, mostly waiting on agents. Learnings 8 to 13 come from it.
+
 Binley has no production, no users and no deploy. Its numbers show the mechanism works, not that it can be trusted, and its jobs do not count toward any autonomy level.
 
 | # | Learning | What we do |
@@ -58,6 +60,12 @@ Binley has no production, no users and no deploy. Its numbers show the mechanism
 | 5 | Acceptance criteria get narrowed or skipped on the way through (three of 11 jobs) | The approver escalates it today; the Dev council sees the original issue in its packet |
 | 6 | Windows cost most of the debugging | The engine moves to Linux; the Windows patches are deleted once the container works |
 | 7 | The judgment agents cost more than the build | Measure cost per agent in the event log, then try cheaper models where a script now does the checking |
+| 8 | A cached PASS is not evidence: one PR passed the gate on a cache replay of tests that failed on a fresh run | The gate runs the checks with the build cache off (E3.4) |
+| 9 | Reviewers replied without writing their review file in four of 18 jobs | The engine already goes by the file, not the reply. It sends that reviewer back in the same run (E4.5) |
+| 10 | One shared line in a hot-spot file cost three rounds of merge conflicts | A merge-main round for open PRs after every merge (E5.4), and one entry per package in shared files |
+| 11 | Two of 18 jobs blocked before writing code, because the environment lacked what the spec pinned (wheels, database extensions, runtime versions) | The container is built to match the project's CI (carried over) |
+| 12 | The security reviewer's first round missed a temp-table bypass of ledger rules; the second round caught it | A SQL checklist in the project's own rules (carried over) |
+| 13 | Every label-routed PR needed its label added by hand, and merge rules had to read the approver's prose | Gone with E3.1: the engine reads the label on the issue and records which rule fired |
 
 ## How others do it
 
@@ -103,15 +111,18 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
+| E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Open |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |
 | E4.3 | The engine posts the reviewers' summaries, their evidence and the check log on the PR | Open |
 | E4.4 | Non-blocking reviewer notes become follow-up issues. They are not queued automatically | Open |
+| E4.5 | A reviewer that ends without writing its review file is sent back once in the same run, as a review without evidence already is | Open. Today `job` refuses the round and the job waits for the next run |
 | **E5** | **Throughput** | |
-| E5.1 | `concurrency` 2, then 3 | Open |
+| E5.1 | `concurrency` 2, then 3, starting with jobs on disjoint packages | Open |
 | E5.2 | Daily USD budget per project | Open |
 | E5.3 | A scheduled run | Open |
+| E5.4 | After a merge, the engine re-checks the project's open factory PRs for conflicts and starts a merge-main round for each | Open |
 | **E6** | **The container** | |
 | E6.1 | Network allowlist: package registries, GitHub and the model API only | Open |
 | E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Open |
@@ -202,6 +213,16 @@ Monitoring alerts and other sources, through the same tool-less summariser as F4
 | Complexity check, secret scan and dependency audit as examples in the template `checks.sh` | With the first project that lacks them; the readiness checklist reports the gap |
 | Verify the prices in `factory/config.json` against the published price list | Before the first cost figures are relied on |
 | A rule for narrowed acceptance criteria that a script can check | When the event log shows how often it happens |
+| CI parity: the spec-writer checks the environment has what the spec pins, and the builder is told where CI differs (slower, another OS or runtime) | With the container (E6.2), built to match the project's CI; sooner if a real job blocks on it |
+| SQL checklist for the security reviewer: schema-qualify every name in triggers and definer functions, pin `search_path` with `pg_temp` last, and test as the app role with shadowing temp tables | With the first project that has them, in that project's own rules; the agents stay project-neutral |
+| Copy the route label from the issue to the PR | Only if a project's GitHub merge rule reads PR labels. The engine's own rule reads the issue (E3.1) |
+| Remove a merged job's worktree in the background | If it still holds up `factory run` on Linux; it took minutes on Windows |
+
+Three items from the 23 Nov run need no work:
+
+- **Hand merges are detected.** `factory run` asks `job queue` at the start of every run and between jobs, and that moves a job whose PR was merged by hand to `merged`.
+- **A machine-readable "label only" line from the approver.** The always-stop rule is now checked by a script, and each event-log row records the rule that fired (E3.1).
+- **Porting Binley's later factory changes back.** Checked on 24 Nov: since the harvest, Binley's factory files changed once, for a rule that belongs to that project.
 
 ---
 
