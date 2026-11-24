@@ -112,8 +112,9 @@ def today():
 
 def spent_today():
     """The project's spend today, across every job. Rows from before E5.2 have no day and don't count."""
-    return round(sum(r["cost_usd"] for f in JOBS.glob("*/usage.jsonl")
-                     for r in map(json.loads, f.read_text().splitlines()) if r.get("day") == today()), 2)
+    with USAGE_LOCK:
+        return round(sum(r["cost_usd"] for f in JOBS.glob("*/usage.jsonl")
+                         for r in map(json.loads, f.read_text().splitlines()) if r.get("day") == today()), 2)
 
 
 class DailyBudget(Exception):
