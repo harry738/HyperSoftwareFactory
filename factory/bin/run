@@ -297,7 +297,13 @@ def step(j):
             return res.returncode == 0 and advance(j, "spec")
         return advance(j, {"DECISION: NEEDS-INFO": "needs-info", "DECISION: REJECT": "rejected"}.get(decision, "spec"))
     if stage == "spec":
-        return run_agent(j, "spec-writer", "") and advance(j, "build")
+        if not run_agent(j, "spec-writer", ""):
+            return False
+        if (first_line(d / "spec.md") or "").startswith("STATUS:"):  # NEEDS-SPLIT or BLOCKED: a person decides
+            return stop(j, f"The spec writer stopped: {first_line(d / 'spec.md')}\n\n"
+                           + (d / "spec.md").read_text().split("\n", 1)[1].strip()
+                           + "\n\nChange the issue (or split it), then `job retry` writes the spec again.")
+        return advance(j, "build")
     if stage == "build":
         return build(j)
     if stage == "gate":
