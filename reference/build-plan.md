@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.3 (2026-11-24) — adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -107,11 +107,14 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Done: up to three more tries, resuming the failed session |
 | E2.3 | Event log: one append-only typed row per stage transition, per project, with cost, time and outcome | Done: `events.jsonl` in the project job folder, written by `job` on every stage change. Per-stage cost and time are in each job folder `usage.jsonl` |
 | E2.4 | Feedback loop: at the start of each run, a "changes requested" review or a failed CI check on a job's PR starts the next build round with that feedback, inside the three-round cap | Done, with one change: see the note under this table |
+| E2.5 | The spec stage can hand a job to a person: the spec writer may answer "needs a split" (or "blocked"), and the job moves to `needs-human` with the reason. Today `spec` can only go to `build`, so a ticket over its own size limit sits in `spec` and holds a slot; on 24 Nov it took a stand-in spec and a blocked build to release it | Open |
+| E2.6 | When CI jobs never start (a billing or quota annotation such as "The job was not started because recent account payments have failed"), the engine reports an infrastructure stop to the operator instead of a failed check, and stops merging or starting merge-dependent work. On 24 Nov every PR showed red checks for this reason | Open |
 | **E3** | **Rules in scripts** | |
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
 | E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Done: the gate's run sets `FACTORY_GATE=1`, `TURBO_FORCE` and `NX_SKIP_NX_CACHE`, plus any switch in `gate_env` in `config.json`, and lists them in `checks.md`. The builder's own runs keep the cache |
+| E3.5 | Flaky checks: the gate re-runs a failed end-to-end step once, records both results, and passes only if the re-run passes. A test that flakes twice in a week becomes a follow-up issue. On 24 Nov four gate failures were flakes (a duplicate demo label during loading, axe `document-title` before the title is set, a 5 s test timeout under load from parallel builders), each passing on re-run | Open |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |
@@ -123,6 +126,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E5.2 | Daily USD budget per project | Done: `daily_budget_usd` in `config.json` (UTC days, 50 in the template). When today's spend across the project's jobs reaches it, `run` ends before the next stage and every job stays where it is for the next run |
 | E5.3 | A scheduled run | Open |
 | E5.4 | After a merge, the engine re-checks the project's open factory PRs for conflicts and starts a merge-main round for each | Open |
+| E5.5 | A review round can be abandoned when the base moves: if the PR becomes conflicting during review, the job goes straight back to `build` for a merge-main round. Today `job` refuses to leave `review` until every reviewer has reported, so stale reviews must finish first. Also note for E5.1: on one machine, parallel builders and gates slow each other enough to time tests out | Open |
 | **E6** | **The container** | |
 | E6.1 | Network allowlist: package registries, GitHub and the model API only | Open |
 | E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Open |
