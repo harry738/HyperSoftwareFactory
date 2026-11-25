@@ -1,0 +1,61 @@
+# The factory behind its egress proxy. From the repo root:
+#   docker compose -f deploy/compose.yaml up -d --build
+name: software-factory
+
+x-locked: &locked
+  image: software-factory:local
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+  restart: unless-stopped
+
+services:
+  factory:
+    <<: *locked
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        CLAUDE_VERSION: ${CLAUDE_VERSION:-}
+        PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-}
+    command: ["sleep", "infinity"]
+    networks: [inside]
+    depends_on: [egress]
+    pids_limit: 4096
+    mem_limit: ${FACTORY_MEMORY:-8g}
+    shm_size: 1g
+    tmpfs: ["/tmp:exec,mode=1777"]
+    volumes: ["home:/home/factory"]
+    environment:
+      - HTTPS_PROXY=http://egress:3128
+      - HTTP_PROXY=http://egress:3128
+      - https_proxy=http://egress:3128
+      - http_proxy=http://egress:3128
+      - NO_PROXY=localhost,127.0.0.1,::1
+      - no_proxy=localhost,127.0.0.1,::1
+      - NODE_USE_ENV_PROXY=1
+      # Passed through only when set in the shell or deploy/.env; never part of the image.
+      - CLAUDE_CODE_OAUTH_TOKEN
+      - GH_TOKEN
+
+  egress:
+    <<: *locked
+    pull_policy: never
+    command: ["python", "/opt/factory/deploy/proxy.py"]
+    networks: [inside, outside]
+    pids_limit: 256
+    mem_limit: 256m
+    volumes: ["./allow:/allow:ro"]
+
+networks:
+  inside:
+    internal: true # no route out
+    driver_opts:
+      # and no address on the Docker host's side of the bridge (needs a recent Engine; verified on 29.8.2)
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  outside: {}
+
+volumes:
+  home: {}

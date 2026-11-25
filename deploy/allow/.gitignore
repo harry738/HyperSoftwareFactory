@@ -1,0 +1,3 @@
+# Project lists can name real projects and private hosts; only the base list is committed.
+*.txt
+!base.txt

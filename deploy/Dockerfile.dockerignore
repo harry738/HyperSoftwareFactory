@@ -1,0 +1,7 @@
+*
+!factory
+!.claude/agents
+!deploy/proxy.py
+!deploy/verify.py
+factory/jobs
+**/__pycache__
