@@ -32,10 +32,15 @@ out = lambda x: print(x if isinstance(x, str) else json.dumps(x))
 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 if a[:2] == ["api", "user"]:
     out("operator")
-elif a[0] == "api" and a[1].endswith("/annotations"):
-    ran = "/check-runs/901/" not in a[1]  # job 901 is the one GitHub never started
-    out([{"message": "Process completed with exit code 1." if ran else
-          "The job was not started because recent account payments have failed or your spending limit needs to be increased."}])
+elif a[0] == "api" and "/actions/jobs/" in a[1]:
+    ran = not a[1].endswith("/901")  # job 901 is the one GitHub never started
+    out({"conclusion": "failure", "steps": [{"name": "test"}] if ran else [], "runner_name": "runner-1" if ran else ""})
+elif a[:2] == ["run", "rerun"]:
+    if not os.environ.get("FAKE_CHECKS"):  # the account is fixed: the re-run passes
+        for p in s["prs"]:
+            p["checks"] = []
+elif a[:2] == ["pr", "merge"]:
+    pr()["state"] = "MERGED"
 elif a[0] == "api" and a[1].endswith("/comments"):
     out(pr(re.search(r"/pulls/(\d+)/", a[1]).group(1)).get("inline", []))
 elif a[:2] == ["issue", "list"]:
@@ -62,7 +67,10 @@ elif a[:2] == ["pr", "view"]:
     out({"isDraft": p["isDraft"], "state": p["state"], "comments": p["comments"], "reviews": p.get("reviews", []),
          "headRefOid": p.get("headRefOid", "sha0")})
 elif a[:2] == ["pr", "checks"]:
-    checks = json.loads(os.environ["FAKE_CHECKS"]) if os.environ.get("FAKE_CHECKS") else pr().get("checks", [])
+    if os.environ.get("FAKE_CHECKS"):  # they stay on the PR until a re-run, as on GitHub
+        pr()["checks"] = json.loads(os.environ["FAKE_CHECKS"])
+        path.write_text(json.dumps(s, indent=1))
+    checks = pr().get("checks", [])
     out(checks)
     if "--watch" in a and any(c["bucket"] == "fail" for c in checks):
         sys.exit(1)
@@ -112,8 +120,14 @@ elif agent == "builder":
     if os.environ.get("FAKE_TOUCH"):
         (worktree / os.environ["FAKE_TOUCH"]).write_text("{}\n")
     git = ["git", "-C", str(worktree), "-c", "user.email=b@example.test", "-c", "user.name=builder"]
-    subprocess.run(git + ["add", "-A"], check=True)
-    subprocess.run(git + ["commit", "-q", "-m", "Add feature"], check=True)
+    for args in (["add", "-A"], ["commit", "-q", "-m", "Add feature"]):
+        for attempt in range(5):  # on Windows, writing an object can fail while a scanner holds its folder
+            done = subprocess.run(git + args, capture_output=True, text=True)
+            if done.returncode == 0:
+                break
+            time.sleep(0.3)
+        else:
+            sys.exit("fake builder: git %s: %s" % (args[0], done.stderr))
     (folder / "build.md").write_text("STATUS: READY\n\n## Summary\n- added feature.txt\n")
 elif agent.startswith("reviewer-"):
     if os.environ.get("FAKE_SILENT") == agent and not (folder / "silent-done").exists():
@@ -226,7 +240,7 @@ def test_onboard_registers_clones_and_reports():
     (CONF / "setup.sh").write_text('#!/usr/bin/env bash\necho ran >> "$FACTORY_HOME/setup-ran.txt"\n')
     c.pop("dev_server")
     (CONF / "config.json").write_text(json.dumps(c))
-    config(stage_stall_minutes=0.05, stage_timeout_minutes=2, retry_waits_seconds=[0])  # quick limits for the tests
+    config(stage_timeout_minutes=2, retry_waits_seconds=[0])  # quick limits for the tests
     assert "yes  checks.sh written" in factory("onboard", (TMP / "origin.git").as_posix(), "--name", "demo").stdout
 
 
@@ -301,18 +315,22 @@ def test_a_passing_failure_is_tried_again():
 
 
 def test_a_stalled_stage_is_killed_and_handed_to_a_person():
-    label(4)
-    res = factory("run", "demo", FAKE_STALL="builder")
-    assert res.returncode == 0, res.stdout + res.stderr  # handing a job to a person isn't a failed run
-    j = job(4)
-    assert j["stage"] == "needs-human" and j["stopped_in"] == "build", j
-    issue = gh_state()["issues"][3]
-    assert "produced no output" in issue["comments"][-1] and "factory:needs-human" in issue["labels"], issue
-    assert "back in build" in job_cmd("retry", "4")
-    res = factory("run", "demo")
-    assert res.returncode == 0, res.stdout + res.stderr
-    j = job(4)
-    assert j["stage"] == "needs-human" and j["pr"] == 13 and "stopped_in" not in j, j
+    config(stage_stall_minutes=0.05)  # 3s, for this test only: a busy machine can be silent that long
+    try:
+        label(4)
+        res = factory("run", "demo", FAKE_STALL="builder")
+        assert res.returncode == 0, res.stdout + res.stderr  # handing a job to a person isn't a failed run
+        j = job(4)
+        assert j["stage"] == "needs-human" and j["stopped_in"] == "build", j
+        issue = gh_state()["issues"][3]
+        assert "produced no output" in issue["comments"][-1] and "factory:needs-human" in issue["labels"], issue
+        assert "back in build" in job_cmd("retry", "4")
+        res = factory("run", "demo")
+        assert res.returncode == 0, res.stdout + res.stderr
+        j = job(4)
+        assert j["stage"] == "needs-human" and j["pr"] == 13 and "stopped_in" not in j, j
+    finally:
+        config(stage_stall_minutes=20)
 
 
 def test_a_factory_comment_on_the_pr_starts_the_next_round():
@@ -474,6 +492,15 @@ def test_an_unattended_merge_stops_the_run_when_ci_never_starts():
     assert j["stage"] == "needs-human" and j["stopped_in"] == "merging", j  # `job retry` merges it once CI runs
     assert "billing or quota" in gh_state()["prs"][-1]["comments"][-1]["body"]
     assert not list(JOBS.glob("015-*")), "the run must stop, not start the next job"
+    # The account is fixed: retry re-runs the jobs GitHub never started, and merges.
+    gh_state(lambda s: s["issues"][14].update(labels=[]))
+    job_cmd("retry", j["id"])
+    config(unattended_merge=True)
+    try:
+        res = factory("run", "demo")
+    finally:
+        config(unattended_merge=False)
+    assert res.returncode == 0 and job(14)["stage"] == "merged", res.stdout + res.stderr
 
 
 def test_status_lists_every_job():

@@ -314,7 +314,10 @@ def test_merge_waits_for_ci():  # main requires CI, so job merge must wait for i
     try:
         job.run = fake_run(0, "checks\tpass\nsemgrep\tpass\n")
         assert job.wait_for_ci(j, settle=0) is None
-        assert calls[-1][:4] == ["gh", "pr", "checks", "9"] and "--watch" in calls[-1]
+        watched = [c for c in calls if "--watch" in c]
+        assert watched and watched[-1][-6:-3] == ["checks", "9", "--watch"], calls
+        job.run = fake_run(0, '[{"name": "tests", "bucket": "cancel", "link": ""}]')
+        assert "CI was cancelled on PR #9" in job.wait_for_ci(j, settle=0)
         job.run = fake_run(1, "checks\tfail\n")
         assert "CI didn't pass on PR #9" in job.wait_for_ci(j, settle=0)
         job.run = fake_run(1, "no checks reported on the 'factory/009-ci' branch")

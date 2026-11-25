@@ -150,8 +150,11 @@ def log_event(job, old):
            "gate": job.get("gate"), "reviews": job.get("reviews"),
            "pr": job.get("pr"), "decision": first_line(job_dir(job["id"]) / "decision.md"),
            "stopped_in": job.get("stopped_in")}
-    with (JOBS / "events.jsonl").open("a") as f:
-        f.write(json.dumps(row) + "\n")
+    # Two `job` processes (a run, and a person's command) can log at once; append isn't atomic on Windows.
+    with (JOBS / "events.lock").open("w") as held:
+        proc.lock(held)
+        with (JOBS / "events.jsonl").open("a") as f:
+            f.write(json.dumps(row) + "\n")
 
 
 def all_jobs():
@@ -836,13 +839,15 @@ def cmd_merge(job):
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
         ci_failure = wait_for_ci(job)
-        if ci_failure == CI_NOT_STARTED:  # not the change's fault: hold the job here for `job retry`
-            return cmd_stop(job, CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]))
-        if ci_failure:
+        if ci_failure and ci_failure != CI_NOT_STARTED:
             return fail(ci_failure)
-        merge_when_allowed(job)
+        if not ci_failure:
+            merge_when_allowed(job)
     except Refused as e:
         return fail(f"The merge failed:\n\n```\n{e}\n```")
+    if ci_failure:  # never started, not the change's fault: hold the job here for `job retry`.
+        # Outside the try: a GitHub error while stopping must not become a merge failure.
+        return cmd_stop(job, CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]))
     # GitHub may already have deleted the branch on merge.
     run(["git", "push", "origin", "--delete", job["branch"]], check=False)
     save(advance(sync(job), "merged"))
@@ -853,11 +858,20 @@ def wait_for_ci(job, settle=20):
     """binley: main's ruleset requires CI, so wait for the PR's checks after the
     push. None when they pass or the PR has none, else the reason."""
     time.sleep(settle)  # let GitHub register the checks for the commit just pushed
-    res = run(["gh", "pr", "checks", str(job["pr"]), "--watch", "--fail-fast", "--interval", "20"], check=False)
+    stale = pr_checks(job)
+    if never_started(stale):  # GitHub never retries these itself, and an unchanged commit starts nothing new
+        for run_id in sorted({CI_LINK.search(c["link"])[1] for c in stale if c["bucket"] == "fail"}):
+            run([*GH, "run", "rerun", run_id, "--failed"], check=False)
+        time.sleep(settle)
+    res = run([*GH, "pr", "checks", str(job["pr"]), "--watch", "--fail-fast", "--interval", "20"], check=False)
     out = (res.stdout + res.stderr).strip()
-    if res.returncode == 0 or "no checks reported" in out:
+    if "no checks reported" in out:
         return None
-    if never_started(pr_checks(job)):
+    checks = pr_checks(job)
+    if res.returncode == 0:
+        cancelled = [c["name"] for c in checks if c["bucket"] == "cancel"]  # `gh` exits 0 for these
+        return f"CI was cancelled on PR #{job['pr']}: {', '.join(cancelled)}" if cancelled else None
+    if never_started(checks):
         return CI_NOT_STARTED
     return f"CI didn't pass on PR #{job['pr']}:\n\n```\n{out[-3000:]}\n```"
 
@@ -865,37 +879,45 @@ def wait_for_ci(job, settle=20):
 # `run` ends the run when it sees "CI never started": nothing else should try to merge.
 CI_NOT_STARTED = ("CI never started on PR #{pr}: GitHub did not run its jobs. That is usually a billing or quota "
                   "problem on the account (\"The job was not started because recent account payments have failed\"), "
-                  "not a problem with the change. Fix the account, then `job retry {id}` merges it.")
+                  "not a problem with the change. Fix the account, then `job retry {id}` re-runs CI and merges it "
+                  "(re-run the workflow on GitHub first if the token cannot).")
+CI_LINK = re.compile(r"/actions/runs/(\d+)/job/(\d+)")  # only GitHub Actions checks have one
 
 
 def pr_checks(job):
-    return json_or_empty(run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False).stdout)
+    res = run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False)
+    found = json_or_none(res.stdout)
+    return found if isinstance(found, list) else []
 
 
-def json_or_empty(text):
-    """The list `gh` printed, or [] when it printed an error instead."""
+def json_or_none(text):
+    """What `gh` printed, or None when it printed an error instead."""
     try:
-        return json.loads(text or "[]")
+        return json.loads(text)
     except ValueError:
-        return []
+        return None
 
 
 def never_started(checks):
-    """True when GitHub says it never ran any of the failed checks. The only reliable sign is the
-    check run's annotation: such a job still has a start, an end and a few seconds' duration.
-    A check we can't read the annotations of counts as a real failure."""
+    """True when GitHub never ran any of the failed checks. A check we can't ask about
+    counts as a real failure."""
     failed = [c for c in checks if c["bucket"] == "fail"]
-    return bool(failed) and all(not_started_annotation(c.get("link") or "") for c in failed)
+    return bool(failed) and all(job_never_ran(c.get("link") or "") for c in failed)
 
 
-def not_started_annotation(link):
-    job_id = re.search(r"/actions/runs/\d+/job/(\d+)", link)  # only GitHub Actions jobs have one
-    if not job_id:
+def job_never_ran(link):
+    """A job that never started has no steps and no runner, though it still has a start, an end
+    and a few seconds' duration. Read through the Actions API: a fine-grained token cannot
+    read check-run annotations."""
+    found = CI_LINK.search(link)
+    if not found:
         return False
-    res = run([*GH, "api", f"repos/{{owner}}/{{repo}}/check-runs/{job_id[1]}/annotations"], check=False)
-    if res.returncode != 0:
+    res = run([*GH, "api", f"repos/{{owner}}/{{repo}}/actions/jobs/{found[2]}"], check=False)
+    ran = json_or_none(res.stdout)
+    if res.returncode != 0 or not isinstance(ran, dict):
+        print(f"could not read CI job {found[2]} (does the token have Actions: read?)", file=sys.stderr)
         return False
-    return any(str(a.get("message")).startswith("The job was not started") for a in json_or_empty(res.stdout))
+    return ran.get("conclusion") == "failure" and not ran.get("steps") and not ran.get("runner_name")
 
 
 def merge_when_allowed(job, tries=10, pause=30):
