@@ -5,6 +5,7 @@
   "merge_method": "merge",
   "unattended_merge": false,
   "job_budget_usd": 15,
+  "daily_budget_usd": 50,
   "stage_budget_usd": 5,
   "stage_max_turns": 300,
   "stage_timeout_minutes": 60,

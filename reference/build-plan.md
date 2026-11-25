@@ -111,7 +111,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
-| E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Open |
+| E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Done: the gate's run sets `FACTORY_GATE=1`, `TURBO_FORCE` and `NX_SKIP_NX_CACHE`, plus any switch in `gate_env` in `config.json`, and lists them in `checks.md`. The builder's own runs keep the cache |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Done in code: `run` gives a reviewer the read tools and writes to its one review file, with no shell; the engine writes the commits and diff to `changes.diff` for it. The UI and UX reviewers keep `node` to drive the browser; `node` can write anywhere, and E4.2 only catches writes to the branch and worktree. Also open: the project's own `.claude/settings.json` can widen these limits, and the CLI lets any reviewer write its memory folder. Tested with stand-ins; the rules have not yet met a real model |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Done: `run` compares the branch and tree with the commit the gate passed and hands the job to a person if they differ. It also writes `COMMIT:` in each review, and `job` refuses a review written for another commit |
@@ -120,7 +120,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E4.5 | A reviewer that ends without writing its review file is sent back once in the same run, as a review without evidence already is | Done: `run` resumes that reviewer's session once and asks for the file, in the same retry as a review without evidence |
 | **E5** | **Throughput** | |
 | E5.1 | `concurrency` 2, then 3, starting with jobs on disjoint packages | Open |
-| E5.2 | Daily USD budget per project | Open |
+| E5.2 | Daily USD budget per project | Done: `daily_budget_usd` in `config.json` (UTC days, 50 in the template). When today's spend across the project's jobs reaches it, `run` ends before the next stage and every job stays where it is for the next run |
 | E5.3 | A scheduled run | Open |
 | E5.4 | After a merge, the engine re-checks the project's open factory PRs for conflicts and starts a merge-main round for each | Open |
 | **E6** | **The container** | |

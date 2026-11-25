@@ -189,7 +189,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 11)]
+               "state": "OPEN", "comments": []} for n in range(1, 13)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -349,7 +349,8 @@ def test_a_human_merge_label_stops_the_job_before_the_approver():
 
 def test_a_sensitive_path_raises_the_risk_and_stops_the_job():
     label(7)
-    assert factory("run", "demo", FAKE_TOUCH="package.json").returncode == 0
+    res = factory("run", "demo", FAKE_TOUCH="package.json")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(7)
     assert j["risk"] == "high" and j["intake"]["risk"] == "low", j  # the paths raise the tier; intake cannot lower it
     assert j["agents"]["reviewers"] == {"code": "sonnet", "security": "opus"}, j["agents"]
@@ -367,32 +368,58 @@ def test_low_risk_paths_and_the_council_slot():
     assert j["stage"] == "needs-human" and "approver" in stages_run(8)
 
 
-def test_a_reviewer_that_writes_no_review_file_is_sent_back_once():
+def test_the_gate_runs_the_checks_with_the_build_cache_off():
+    # A cached PASS is not evidence (build plan learning 8): the gate's run turns the build caches off.
+    checks = (CONF / "checks.sh").read_text()
+    (CONF / "checks.sh").write_text('#!/usr/bin/env bash\ntest -f feature.txt\necho "cache: $FACTORY_GATE $TURBO_FORCE $NX_SKIP_NX_CACHE $MY_CACHE"\n'
+                                    'test "$FACTORY_GATE$TURBO_FORCE$NX_SKIP_NX_CACHE$MY_CACHE" = 1truetrueoff\n')
+    config(gate_env={"MY_CACHE": "off"})  # a project adds the switch for its own cache
     label(9)
+    try:
+        assert factory("run", "demo").returncode == 0
+    finally:
+        (CONF / "checks.sh").write_text(checks)
+    j = job(9)
+    assert j["stage"] == "needs-human" and [e["gate"] for e in events(9) if e["to"] == "review"] == ["PASS"], j
+    assert "cache: 1 true true off" in (folder(9) / "round-1" / "checks.log").read_text()
+
+
+def test_the_daily_budget_pauses_the_run_and_the_job_waits():
+    spent = sum(json.loads(r)["cost_usd"] for f in JOBS.glob("*/usage.jsonl") for r in f.read_text().splitlines())
+    config(daily_budget_usd=round(spent + 0.02, 2))  # room for two more stages today
+    label(10)
+    res = factory("run", "demo")
+    assert res.returncode == 0 and "daily budget" in res.stdout, res.stdout + res.stderr
+    j = job(10)
+    assert j["stage"] == "build" and stages_run(10) == ["intake", "spec-writer"], j  # paused, not handed to a person
+    config(daily_budget_usd=100)
+    assert factory("run", "demo").returncode == 0 and job(10)["stage"] == "needs-human", job(10)
+
+
+def test_a_reviewer_that_writes_no_review_file_is_sent_back_once():
+    label(11)
     res = factory("run", "demo", FAKE_SILENT="reviewer-code")
     assert res.returncode == 0, res.stdout + res.stderr
-    assert job(9)["stage"] == "needs-human" and "stopped_in" not in job(9), job(9)  # in the same run
-    assert stages_run(9).count("reviewer-code") == 2, stages_run(9)
+    assert job(11)["stage"] == "needs-human" and "stopped_in" not in job(11), job(11)  # in the same run
+    assert stages_run(11).count("reviewer-code") == 2, stages_run(11)
     again = [c for c in calls() if c["agent"] == "reviewer-code"][-1]["args"]
     assert "Write review-code.md" in again[again.index("-p") + 1], again
     assert again[again.index("--resume") + 1] == "s-reviewer-code", "the reviewer's own session should be sent back"
 
 
 def test_a_reviewer_that_changes_the_branch_stops_the_job():
-    label(10)
+    label(12)
     assert factory("run", "demo", FAKE_EDIT="reviewer-code").returncode == 0
-    j = job(10)
+    j = job(12)
     assert j["stage"] == "needs-human" and j["stopped_in"] == "review", j
     assert "changed during review round 1" in gh_state()["prs"][-1]["comments"][-1]["body"]
-    gated = (folder(10) / "round-1" / "checks.md").read_text().splitlines()[1]
-    review = (folder(10) / "round-1" / "review-code.md").read_text().splitlines()
+    gated = (folder(12) / "round-1" / "checks.md").read_text().splitlines()[1]
+    review = (folder(12) / "round-1" / "review-code.md").read_text().splitlines()
     assert gated.startswith("COMMIT: ") and review[:2] == ["VERDICT: PASS", gated], review  # the commit it read
-    job_cmd("retry", "10")  # by hand, past the engine's check: `job` won't apply the verdict to the later commit
-    res = subprocess.run([sys.executable, str(BIN / "job"), "advance", "10", "approve"],
+    job_cmd("retry", "12")  # by hand, past the engine's check: `job` won't apply the verdict to the later commit
+    res = subprocess.run([sys.executable, str(BIN / "job"), "advance", "12", "approve"],
                          env=env(FACTORY_PROJECT="demo"), capture_output=True, text=True)
     assert res.returncode != 0 and "written for another commit" in res.stdout + res.stderr, res.stdout + res.stderr
-
-
 def test_status_lists_every_job():
     out = factory("status").stdout
     assert "== demo" in out and "001-add-feature-1" in out and "005-add-feature-5" in out, out
