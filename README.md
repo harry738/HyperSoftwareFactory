@@ -338,9 +338,9 @@ This is a product summary, not a change to the delivery order. The [authoritativ
 | [Reference architecture](reference/software-factory-reference-architecture.md) | Target design, security and observability |
 | [Multi-project architecture](reference/factory-multi-project-architecture.md) | One factory, many repositories |
 | [Competitor analysis](reference/feature-comparison.md) | Comparative research |
-| [Brand system](docs/brand/brand-system.md) | Documentation and diagram conventions |
+| [Brand system](docs/brand/brand-system.md) | Documentation, diagram and dashboard conventions |
 | [Demo capture plan](docs/demo-capture-plan.md) | Real product recording backlog |
-| [Archived README](docs/archive/README-2026-11-25.md) | Exact pre-redesign source; relative links refer to the original root layout |
+| [Archived README](docs/archive/README-2026-11-25.md) · [Original rendered location](https://github.com/harry738/HyperSoftwareFactory/blob/351b660f8c53e8a79003ffd746bfa9d34be74c20/README.md) | Exact pre-redesign source; use the historical root link for working relative links |
 
 ### Repository map
 
