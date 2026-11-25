@@ -93,6 +93,8 @@ job = json.loads((folder / "job.json").read_text())
 rd = folder / ("round-%d" % job["round"])
 if agent == "intake":
     (folder / "intake.md").write_text("DECISION: ACCEPT\nRISK: low\nSURFACES: none\nRESCOPED: no\n\n## Summary\n- small and clear\n\n## Scope\nAdd the file.\n")
+elif agent == "spec-writer" and os.environ.get("FAKE_SPEC"):
+    (folder / "spec.md").write_text(os.environ["FAKE_SPEC"] + "\n\n## Why\nThree features in one issue: split it into three.\n")
 elif agent == "spec-writer":
     (folder / "spec.md").write_text("# Add a file\n\n## Acceptance criteria\n1. feature.txt exists\n")
 elif agent == "builder":
@@ -116,7 +118,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SPEC": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -182,7 +184,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 11)]
+               "state": "OPEN", "comments": []} for n in range(1, 12)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -375,6 +377,16 @@ def test_the_daily_budget_pauses_the_run_and_the_job_waits():
     assert j["stage"] == "build" and stages_run(10) == ["intake", "spec-writer"], j  # paused, not handed to a person
     config(daily_budget_usd=100)
     assert factory("run", "demo").returncode == 0 and job(10)["stage"] == "needs-human", job(10)
+
+
+def test_the_spec_writer_can_hand_a_job_to_a_person():
+    label(11)
+    assert factory("run", "demo", FAKE_SPEC="STATUS: NEEDS-SPLIT").returncode == 0
+    j = job(11)
+    assert j["stage"] == "needs-human" and j["stopped_in"] == "spec" and stages_run(11) == ["intake", "spec-writer"], j
+    assert "split it into three" in gh_state()["issues"][10]["comments"][-1], "the reason goes on the issue"
+    job_cmd("retry", j["id"])  # the operator split the issue: try the spec again
+    assert factory("run", "demo").returncode == 0 and job(11)["stage"] == "needs-human" and "builder" in stages_run(11), job(11)
 
 
 def test_status_lists_every_job():

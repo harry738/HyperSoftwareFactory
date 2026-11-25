@@ -69,6 +69,14 @@ The approver escalates to a human when one of these is a product decision.
 - Don't stop to ask. Intake already asked the author everything only they
   could answer. Make the remaining calls yourself and list them under
   Assumptions.
+- Stop only when no spec you could write would be buildable as one job. Then
+  `spec.md` is just a first line and the reason, and the factory hands the job
+  to a person:
+  - `STATUS: NEEDS-SPLIT` when the work is too big for one PR. Under
+    `## Why`, say why and list the separate issues it should become.
+  - `STATUS: BLOCKED` when something outside the repo is missing (an
+    environment, a credential, a decision from another team). Under `## Why`,
+    say what is missing and who can provide it.
 - Prefer the smallest change that fully meets the scope. Don't add options,
   fallbacks or "nice to have" extras.
 - Reuse what exists. If the repo already has a pattern for this (a component, a
