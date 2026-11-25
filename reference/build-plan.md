@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -9,6 +9,48 @@ This repo is public. Nothing here names a real project, a private repo or a loca
 ## Objective
 
 One factory that takes signals (issues, bugs, requirements, market changes) to deployed, verified, monitored software across the operator's own projects, with the operator setting policy and not reviewing every change.
+
+## Release roadmap — authoritative sequence
+
+This sequence supersedes the previous feature order and three-week estimate. E1–E6, F1–F8 and A1–A8 remain the detailed backlog and historical implementation record. No status has been promoted by this documentation change.
+
+| Release | Capability focus | Exit criterion |
+|---|---|---|
+| R1 — Reliable factory | E1.6, CI failure classification, fail-closed merge, bounded checks, reproducible runtime, isolated workers (E2/E3/E6) | Ten supervised real jobs including seeded gate failure, CHANGES, escalation, runaway-stage kill and restart recovery; demonstrate credential/workspace isolation. |
+| R2 — Verified factory | E4, structured specifications, independent holdout tests (F5), security and architecture gates, commit-bound evidence | Every accepted criterion has evidence; independently measure reviewer effectiveness; no missing required CI or stale review accepted. |
+| R3 — Scalable factory | E5, durable scheduler, host-aware workers, conflict resolution, reserved budgets, second project (F7) | Three concurrent jobs across two projects without state corruption or budget-reservation violations; demonstrate worker-loss recovery. |
+| R4 — End-to-end delivery factory | Hermes (F2), Operations Centre (E6.4), existing CI/CD, staging health checks and rollback (F6) | One issue reaches healthy staging; rehearse rollback and record outcome. |
+| R5 — Learning factory | Project knowledge packs, Kaizen (F3/A8), controlled evaluations, shadow Dev council (F1) | Measurable improvement against baseline; independently recorded operator/council verdicts. |
+| R6 — Evidence-gated autonomous factory | FullAuto (A1–A7), LOW-risk unattended merge and controlled deploy, market watch (F4), external intake (F8) | Per-project evidence gates met, sustained LOW-tier performance, proven recovery and explicit operator policy. |
+
+### Priority engineering backlog
+
+| ID | Priority | Work item | Acceptance / dependency |
+|---|---|---|---|
+| R1.1 | P0 | First real run (E1.6), readiness doctor, CI parity | Confirm target required checks and scoped credentials; capture complete issue-to-PR evidence. |
+| R1.2 | P0 | Fail-closed merge defaults and config validation | Missing/invalid unattended setting denies automation; unknown policy or missing required CI never grants approval. |
+| R1.3 | P0 | CI classification and merge integrity (E2.6/E5.4/E5.5) | Separate code, infrastructure, quota, pending/missing checks; pause infra failures; pin expected head SHA; re-review material changes. |
+| R1.4 | P0 | Bounded gate and budgets (E2/E3/E5.2) | Gate/lock timeout and cancellation; atomic aggregate budget reservations; treat unknown usage conservatively. |
+| R1.5 | P0 | Runtime security (E6) | Trusted control plane; OS-enforced per-job/stage isolation, scoped mounts, explicit environment allowlists, independent reviewer/gate outputs, egress limits, no host credentials or Docker socket. Central container alone is packaging, not isolation. |
+| R1.6 | P0 | Flaky checks (E3.5) | Record both attempts and instability; no unconditional PASS after a rerun; explicit quarantine policy and follow-up ticket. |
+| R2.1 | P0 | Specification contract | Stable requirement/acceptance IDs, dependency and architecture/security constraints, out-of-scope and approved scope changes; no silently dropped criteria. Selectively adopt Spec Kit patterns. |
+| R2.2 | P0 | Independent assurance (E3/E4/F5) | Holdout tests from spec without diff, inaccessible to builder; regression, SAST, secrets/dependency scanning, architecture/complexity, UI/accessibility as relevant. Trace criteria to tests or justified evidence. |
+| R2.3 | P0 | Commit-bound PR evidence (E4.3/E4.4) | Candidate SHA, spec/check/reviewer evidence, independent reviewer evaluation; nonblocking findings become nonqueued issues. |
+| R3.1 | P1 | Durable scheduler (E5/F7) | Atomic claims, worker leases/heartbeat, recovery, priority/dependencies, physical-host capacity, project limits, reserved budgets; start with two then three disjoint jobs. |
+| R4.1 | P1 | Release engineering (F6) | Existing CI/CD adapters, environment contracts, artifact identity, staging health checks, approved production boundary and rehearsed rollback. |
+| R4.2 | P1 | Operations Centre and Hermes (E6.4/F2) | Read-only queue, worker health, costs, quality, evidence and release state; schedules and notifications without handing Hermes GitHub credentials; authenticated audited actions later. |
+| R5.1 | P1 | Project knowledge engine (F3) | Versioned role-specific context packs: requirements, ADRs, API contracts, dependencies, security, tests and learnings. Markdown/YAML/code index first. |
+| R5.2 | P1 | Kaizen and evaluations (F3/A8/F1) | Metrics from R1; regression corpus, controlled prompt/model/skill experiments, root cause, reviewed improvement PRs, shadow-only council. |
+| R6.1 | P2 | Governed autonomy (A1–A7) | Separate implementation and activation; LOW tier initially; isolation, required CI, assurance, rollback and per-project evidence before operator opt-in. |
+| R6.2 | P2 | External intake (F4/F8) | Tool-less summarisation of untrusted inputs, provenance, deduplication, approved proposals; no automatic queueing before policy permits. |
+
+### Measurement and policy decisions
+
+**North Star:** verified business outcomes delivered per unit of cost. Measure accepted requirements, cost per verified outcome, escaped defects and requirement coverage, operator minutes per accepted change, issue-to-deployment lead time, and change failure/recovery rates. Report sample sizes and definitions; missing metrics are unknown, not zero. Existing L1–L4 criteria remain additional autonomy gates.
+
+Two v6.4 conflicts require an explicit policy decision: council rewrites beyond the three-round cap, and FullAuto judgement of sensitive/always-stop paths. Until a separately reviewed policy change, the stricter CONTEXT.md rules govern: no extra autonomous round and no override of always-stop paths. No council or model can override mechanical controls. Decline or operator handoff is preferable to an unsafe merge.
+
+Source-level review: [aa8fe5e](https://github.com/harry738/HyperSoftwareFactory/commit/aa8fe5e0b83778bab4fead22e51b8619d4e43d6b). Not a live execution or penetration test; recheck the latest code before closing findings.
 
 ## Operating model
 
@@ -27,7 +69,7 @@ One factory that takes signals (issues, bugs, requirements, market changes) to d
 | Central, not per repo | One factory serves every project. Nothing from the engine is copied into a project repo. |
 | Claude Code is the development engine | Every stage (intake, spec, build, review, approve) is a headless Claude Code run with its own agent definition. |
 | The loop is a script | `factory run` owns the control flow and starts one stage at a time. No model decides what happens next. |
-| Deployed as a container | The factory runs as one container on the operator's local Docker Desktop. It is built on plain Linux first (a dedicated WSL2 distro), so the container is packaging, not a redesign. |
+| Deployed as a container | Central control plane on local Docker Desktop with per-job or per-stage isolated workers before expanding trust. Linux/WSL first; central packaging alone is not an isolation boundary. |
 | A private factory home | A small private repo holds the real project registry and each project's `checks.sh`, `setup.sh` and path rules. This public repo holds the engine and examples only. Secrets are in neither. |
 | Project config stays out of the project | The builder cannot change the checks or rules it is judged by, because they are not in its worktree. |
 | What a project repo does hold | Its own `AGENTS.md`, a `CONTEXT.md` (what the product is, its hard rules), a learnings file and a competitor list. All four are protected paths: agents read them, and they change only through a reviewed PR. |
@@ -80,16 +122,16 @@ The [feature comparison](feature-comparison.md) covers six open-source and seven
 ## Approach
 
 1. **Engine first, then features.** The engine is everything deterministic: the loop, the state machine, the gate, routing, isolation, caps, the event log, merge, and the file formats agents write.
-2. **Engine code does not wait for evidence; autonomy does.** The engine is built on a timebox. What the factory may do without the operator is earned on measured jobs, or in FullAuto mode set by the operator's policy and adjusted by the factory from its own results.
+2. **Engine code does not wait for evidence; autonomy does.** Release exit criteria govern progression. What the factory may do without the operator is earned on measured jobs, or in FullAuto mode set by the operator's policy and adjusted by the factory from its own results.
 3. **Backpressure before forward pressure.** Checks, budgets and isolation land before anything that creates more work.
 4. **Enforce in scripts and platform settings, not in prompts.**
-5. **One real project until the engine track exits.**
+5. **One real project through R1/R2; the second in R3.**
 
 ---
 
-## Engine track — three weeks
+## Engine track — retained work items
 
-Three weeks is an estimate. The first real job lands inside week one.
+The original three-week estimate is historical. R1/R2 govern priority; E1.6 remains the first milestone.
 
 Already done in this repo: the per-worktree checks lock, a re-runnable `job advance`, the gate rejecting new and renamed-in protected files, reviewers with a browser on one shared dev server, the evidence rule for reviews, reviewers added by sensitive path, a waiting job lock, `job merge` waiting for required CI, and project-neutral agents.
 
@@ -114,7 +156,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
 | E3.4 | The gate's run of `checks.sh` bypasses the project's build cache (for example `TURBO_FORCE=true`), or the cache is keyed per job | Done: the gate's run sets `FACTORY_GATE=1`, `TURBO_FORCE` and `NX_SKIP_NX_CACHE`, plus any switch in `gate_env` in `config.json`, and lists them in `checks.md`. The builder's own runs keep the cache |
-| E3.5 | Flaky checks: the gate re-runs a failed end-to-end step once, records both results, and passes only if the re-run passes. A test that flakes twice in a week becomes a follow-up issue. On 24 Nov four gate failures were flakes (a duplicate demo label during loading, axe `document-title` before the title is set, a 5 s test timeout under load from parallel builders), each passing on re-run | Open |
+| E3.5 | Flaky checks: the gate re-runs a failed end-to-end step once, records both results, and records instability rather than unconditional PASS; progression requires an approved quarantine policy. A test that flakes twice in a week becomes a follow-up issue. On 24 Nov four gate failures were flakes (a duplicate demo label during loading, axe `document-title` before the title is set, a 5 s test timeout under load from parallel builders), each passing on re-run | Open |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Done in code: `run` gives a reviewer the read tools and writes to its one review file, with no shell; the engine writes the commits and diff to `changes.diff` for it. The UI and UX reviewers keep `node` to drive the browser; `node` can write anywhere, and E4.2 only catches writes to the branch and worktree. Reviewers load no project settings and no MCP servers, so a branch cannot widen these limits. Also open: the CLI lets any reviewer write its memory folder. Tested with stand-ins; the rules have not yet met a real model |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Done: `run` compares the branch and tree with the commit the gate passed and hands the job to a person if they differ. It also writes `COMMIT:` in each review, and `job` refuses a review written for another commit |
@@ -152,7 +194,7 @@ Levels are per project and are earned on real jobs. This is the default mode, `s
 
 Rules that hold at every level:
 
-- Always-stop rules by label and path outrank everything, including the Dev council. In FullAuto mode the label still does; what a sensitive path does is set in the project's policy.
+- Always-stop rules by label and path outrank everything, including the Dev council. This remains true in FullAuto pending explicit reviewed policy change.
 - A project may mark paths that never merge without the operator, whatever the level.
 - Any escape on an unattended merge drops that project one level until the cause is fixed and recorded.
 
@@ -167,9 +209,9 @@ A mode the operator selects, in which no job waits for a person to verify it. Th
 | ID | Task | Status |
 |---|---|---|
 | A1 | Selecting the mode, at three levels. For one job: a `full-auto` label on the issue. For one run: `factory run <project> --full-auto`. As a project's default: `mode` in its `config.json`. The most specific choice wins, and a `supervised` label or `--supervised` turns it off the same way. The label counts only when the operator or a login in `trusted_logins` added it. `factory status`, the dashboard and each event-log row show the mode a job ran in | Open |
-| A2 | A `policy` block in the project's `config.json`, replacing `unattended_merge`: the default `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` or `judge`), and a daily cap on merges. A project starts at the LOW tier | Open |
+| A2 | A `policy` block in the project's `config.json`, replacing `unattended_merge`: the default `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` only until explicitly changed by reviewed policy), and a daily cap on merges. A project starts at the LOW tier | Open |
 | A3 | A `policy.md` per project in the factory home: the operator's rules in plain language. The approver and the judge read it and name the rule they applied. It is not in the project repo, so a builder cannot change it | Open |
-| A4 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE is one more build round with the judge's direction. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
+| A4 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE uses only the remaining authorised round budget; otherwise decline or hand off. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
 | A5 | A watch after the merge. The engine waits for the base branch's CI, and for the deploy health check once F6 exists. A failure merges a revert, logs an escape and sends the job back for one round with the failure as feedback | Open |
 | A6 | Grading. Fourteen days after each merge the engine records whether it was reverted or hot-fixed, next to the verdict and the rule that allowed it | Open |
 | A7 | The factory changes its own allowance, kept in a state file in the factory home. An escape takes that tier out of unattended merge at once. A run of clean graded merges (`promote_after`, twenty to start with) adds the next tier, never past the `ceiling` | Open |
@@ -189,20 +231,20 @@ What the mode cannot do:
 - It learns only from failures it can see: a failed check, a failed health check, a revert. A change that passes every check and is still wrong is not caught, so the mode is only as good as the project's checks. Holdout checks (F5), the deploy health check (F6) and monitoring alerts (F8) are what raise that.
 - It does not answer an unclear issue. Intake still asks on the issue (NEEDS-INFO) and the job continues when someone answers.
 
-**Order.** A1 to A3 follow E4: they change the same files, and an unattended merge needs reviewers that are read-only and tied to the commit they reviewed. A5 lands before the mode is selected anywhere, with the daily budget (E5.2). A4 comes with F1, and A6 to A8 with F3. A project should run some supervised jobs with a real model first; none has yet.
+**Order.** R1/R2 assurance precedes activation. A1–A3 may be implemented after E4, A5 recovery rehearsed in R4, A4 shadow-only in R5, A6/A8 measurement begins early; A7 and activation await R6 and existing evidence gates.
 
 ---
 
-## Features, in order
+## Features — retained identifiers
 
-Built after the engine track, one at a time.
+R2: F5; R3: F7; R4: F2/F6; R5: F3/F1 (measurement from R1); R6: F4/F8. Release roadmap governs sequencing.
 
 ### F1 — Dev council, in shadow
 
 A council of models that debates a contested job and decides what happens to it.
 
 - **When it is called.** Wherever a job would otherwise come to the operator: the approver escalates, a stage is blocked, the round limit is hit, or a review is needed. It does not replace the gate, the reviewers or the approver.
-- **What it returns.** MERGE, REWRITE or ESCALATE. REWRITE is one extra build round with the council's direction, outside the three-round cap and limited to one. A split escalates.
+- **What it returns.** MERGE, REWRITE or ESCALATE. REWRITE is a recommendation within the existing three-round cap; an extra round requires a reviewed policy change. A split escalates.
 - **Who sits on it.** Three seats from three different labs (Architect, Risk, Product) and a Chair from a fourth. The seat-to-model mapping is configuration, and a project can override it.
 - **How it debates.** Two rounds: independent positions, then one rebuttal where seats see each other. Every answer ends in a structured close: position, confidence, weakest premise, cheapest test.
 - **What it sees.** An evidence packet built by the engine: the issue, the spec, the diff, the gate result, the reviews, the project's `CONTEXT.md` and its learnings file. Seats have no tools. They cannot run code, read the repo or push; the engine carries out the verdict.
