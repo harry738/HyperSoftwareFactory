@@ -836,6 +836,8 @@ def cmd_merge(job):
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
         ci_failure = wait_for_ci(job)
+        if ci_failure == CI_NOT_STARTED:  # not the change's fault: hold the job here for `job retry`
+            return cmd_stop(job, CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]))
         if ci_failure:
             return fail(ci_failure)
         merge_when_allowed(job)
@@ -855,7 +857,45 @@ def wait_for_ci(job, settle=20):
     out = (res.stdout + res.stderr).strip()
     if res.returncode == 0 or "no checks reported" in out:
         return None
+    if never_started(pr_checks(job)):
+        return CI_NOT_STARTED
     return f"CI didn't pass on PR #{job['pr']}:\n\n```\n{out[-3000:]}\n```"
+
+
+# `run` ends the run when it sees "CI never started": nothing else should try to merge.
+CI_NOT_STARTED = ("CI never started on PR #{pr}: GitHub did not run its jobs. That is usually a billing or quota "
+                  "problem on the account (\"The job was not started because recent account payments have failed\"), "
+                  "not a problem with the change. Fix the account, then `job retry {id}` merges it.")
+
+
+def pr_checks(job):
+    return json_or_empty(run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False).stdout)
+
+
+def json_or_empty(text):
+    """The list `gh` printed, or [] when it printed an error instead."""
+    try:
+        return json.loads(text or "[]")
+    except ValueError:
+        return []
+
+
+def never_started(checks):
+    """True when GitHub says it never ran any of the failed checks. The only reliable sign is the
+    check run's annotation: such a job still has a start, an end and a few seconds' duration.
+    A check we can't read the annotations of counts as a real failure."""
+    failed = [c for c in checks if c["bucket"] == "fail"]
+    return bool(failed) and all(not_started_annotation(c.get("link") or "") for c in failed)
+
+
+def not_started_annotation(link):
+    job_id = re.search(r"/actions/runs/\d+/job/(\d+)", link)  # only GitHub Actions jobs have one
+    if not job_id:
+        return False
+    res = run([*GH, "api", f"repos/{{owner}}/{{repo}}/check-runs/{job_id[1]}/annotations"], check=False)
+    if res.returncode != 0:
+        return False
+    return any(str(a.get("message")).startswith("The job was not started") for a in json_or_empty(res.stdout))
 
 
 def merge_when_allowed(job, tries=10, pause=30):
@@ -939,8 +979,10 @@ def cmd_pr_feedback(job):
         return cmd_feedback(job, text + ("\n\nInline comments:\n" + "\n".join(lines) if lines else ""),
                             who="a review on the pull request")
     if job["round"] < job["round_limit"] and job.get("ci_feedback_sha") != pr["headRefOid"]:
-        res = run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False)
-        failed = [c for c in json.loads(res.stdout or "[]") if c["bucket"] == "fail"]
+        checks = pr_checks(job)
+        failed = [c for c in checks if c["bucket"] == "fail"]
+        if never_started(checks):  # not the change's fault, so no build round
+            return print(f"{job['id']}: " + CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]).split(" Fix")[0])
         if failed:
             job["ci_feedback_sha"] = pr["headRefOid"]
             return cmd_feedback(job, "CI failed on the pull request. Fix the cause, not the check.\n\n"
