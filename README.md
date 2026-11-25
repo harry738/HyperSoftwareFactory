@@ -142,11 +142,11 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 | Engine track | Goal | Status |
 |---|---|---|
 | E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | E1.1–E1.5 done, tested with stand-ins; E1.6, the first real job, is open |
-| E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, a feedback loop from the PR, a spec hand-off, and a stop when CI never starts | E2.1–E2.5 done, tested with stand-ins; E2.6 (CI never starts) is open |
+| E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, a feedback loop from the PR, a spec hand-off, and a stop when CI never starts | E2.1–E2.6 done, tested with stand-ins |
 | E3 | Always-stop rules and the path-based risk floor in scripts, a council slot in the state machine, a gate with the build cache off, and a re-run for flaky checks | E3.1–E3.4 done, tested with stand-ins; E3.5 (flaky checks) is open |
 | E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues, a send-back for a missing review | E4.1–E4.5 done, tested with stand-ins |
 | E5 | Concurrency, a daily budget, a scheduled run, and merge-main rounds when the base moves | E5.2 (daily budget) done, tested with stand-ins; the rest is open |
-| E6 | Network allowlist, the container, removal of the old per-repo path, and a read-only web console | Not started |
+| E6 | Network allowlist, the container, removal of the old per-repo path, and a read-only web console | E6.1 and E6.2 (allowlist and container) done, not yet run signed in; E6.3 and E6.4 are open |
 
 Then the features, in order:
 

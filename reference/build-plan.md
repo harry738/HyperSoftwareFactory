@@ -128,8 +128,8 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E5.4 | After a merge, the engine re-checks the project's open factory PRs for conflicts and starts a merge-main round for each | Open |
 | E5.5 | A review round can be abandoned when the base moves: if the PR becomes conflicting during review, the job goes straight back to `build` for a merge-main round. Today `job` refuses to leave `review` until every reviewer has reported, so stale reviews must finish first. Also note for E5.1: on one machine, parallel builders and gates slow each other enough to time tests out | Open |
 | **E6** | **The container** | |
-| E6.1 | Network allowlist: package registries, GitHub and the model API only | Open |
-| E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Open |
+| E6.1 | Network allowlist: package registries, GitHub and the model API only | Done in `deploy/`: the factory container has no route out, and a proxy forwards HTTPS to listed hosts only. Verified with the built image on local Docker: `verify.py` passes, git and npm work through it |
+| E6.2 | Dockerfile, and the factory deployed as a container on local Docker Desktop. Start from Anthropic's reference dev container and its firewall script | Done: the image builds and `factory/test_run.py` passes inside the container. Not yet run signed in, with a real model or project. The reference firewall script was dropped (it leaves DNS and SSH open) for an internal network and a proxy. Engine and agents are still one user, so E1.4's hard separation is still open |
 | E6.3 | Delete the old path: the LLM-driven loop, install-by-copy, and the Windows patches | Open |
 | E6.4 | The web console: the container serves the dashboard for every project in the factory home (it reads them since #37), bound to localhost inside a private tunnel such as Tailscale, so the operator can watch runs from another device without opening a port to the internet. Read-only: actions stay on the command line and in PR comments | Open |
 
