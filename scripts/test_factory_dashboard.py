@@ -15,14 +15,21 @@ with tempfile.TemporaryDirectory() as tmp:
     (tmp / "alpha" / "factory" / "config.json").write_text("private")
     (tmp / "alpha" / "secret.txt").write_text("private")
     fd.CONFIG_PATH = tmp / "projects.yaml"
-    fd.HOME = tmp / "home"
+    fd.HOME = tmp / "home"  # never the real factory home
     assert fd.load_projects() == {}, "no registry yet is not an error"
     fd.CONFIG_PATH.write_text(
         f"projects:\n  alpha:\n    name: Alpha\n    path: '{tmp / 'alpha'}'\n  beta:\n    repo: o/beta\n")
 
-    conf = fd.HOME / "projects" / "gamma"
-    conf.mkdir(parents=True)
-    (conf / "config.json").write_text('{"repo": "o/gamma"}')
+    # Central layout: gamma has a job, delta none yet, "half" was never given a config.
+    # alpha is installed both ways; beta is in the registry without a checkout.
+    for name in ("alpha", "beta", "gamma", "delta"):
+        (fd.HOME / "projects" / name).mkdir(parents=True)
+        (fd.HOME / "projects" / name / "config.json").write_text("private")
+    (fd.HOME / "projects" / "gamma" / "config.json").write_text('{"repo": "o/gamma", "note": "private"}')
+    (fd.HOME / "projects" / "half").mkdir()
+    central = fd.HOME / "work" / "gamma" / "jobs" / "002-y"
+    central.mkdir(parents=True)
+    (central / "job.json").write_text('{"id": "002-y"}')
     gh = tmp / "gh.py"
     gh.write_text("""print('[{"number": 7, "statusCheckRollup": [{"conclusion": "SUCCESS"}, {"state": "FAILURE"}]}]')""")
     fd.GH = [sys.executable, str(gh)]
@@ -42,9 +49,11 @@ with tempfile.TemporaryDirectory() as tmp:
             return e.code, ""
 
     assert json.loads(get("/projects.json")[1]) == [
-        {"slug": "alpha", "name": "Alpha", "installed": True, "repo": None},
-        {"slug": "beta", "name": "beta", "installed": False, "repo": "o/beta"},
-        {"slug": "gamma", "name": "gamma", "installed": True, "repo": "o/gamma"},
+        {"slug": "alpha", "name": "Alpha", "installed": True, "project": None, "repo": None},
+        {"slug": "beta", "name": "beta", "installed": True, "project": "beta", "repo": "o/beta"},
+        {"slug": "alpha-central", "name": "Alpha (central)", "installed": True, "project": "alpha", "repo": None},
+        {"slug": "delta", "name": "delta", "installed": True, "project": "delta", "repo": None},
+        {"slug": "gamma", "name": "gamma", "installed": True, "project": "gamma", "repo": "o/gamma"},
     ]
     assert json.loads(get("/gamma/prs.json")[1]) == {"prs": [{"number": 7, "checks": "fail"}]}
     assert get("/alpha/prs.json")[0] == 404, "no repo, no PRs"
@@ -53,10 +62,17 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError("a foreign Host header was served")
     except urllib.error.HTTPError as e:
         assert e.code == 403
+    assert get("/gamma/jobs/002-y/job.json") == (200, '{"id": "002-y"}')
+    assert "002-y/" in get("/gamma/jobs/")[1]
+    assert get("/delta/jobs/")[0] == 404, "no job yet: the page shows an empty board"
+    for escape in ("/gamma/jobs/../../../projects/gamma/config.json",
+                   "/gamma/jobs/%2e%2e/%2e%2e/%2e%2e/projects/gamma/config.json"):
+        assert "private" not in get(escape)[1], f"{escape} left the jobs directory"
     assert get("/alpha/jobs/001-x/job.json") == (200, '{"id": "001-x"}')
     assert "001-x/" in get("/alpha/jobs/")[1], "the board reads the directory listing"
     assert get("/")[0] == 200 and get("/dashboard.html")[0] == 200
-    assert get("/beta/jobs/")[0] == 404, "no checkout, no board"
+    fd.HOME = tmp / "none"
+    assert fd.load_projects()["beta"]["jobs"] is None, "no checkout, no board"
     for escape in ("/alpha/jobs/../config.json", "/alpha/jobs/%2e%2e/config.json",
                    "/alpha/jobs/../../secret.txt", "/alpha/jobs/..%5c..%5csecret.txt"):
         assert "private" not in get(escape)[1], f"{escape} left the jobs directory"
