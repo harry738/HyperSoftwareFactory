@@ -12,7 +12,7 @@
 <br>
 [![Status](https://img.shields.io/badge/status-pilot-orange.svg)](reference/binley/pilot-report-2026-11-21.md)
 [![Autonomy](https://img.shields.io/badge/autonomy-working%20toward%20L1-yellow.svg)](#autonomy-levels)
-[![Roadmap](https://img.shields.io/badge/roadmap-step%201%20of%206-lightgrey.svg)](#roadmap)
+[![Roadmap](https://img.shields.io/badge/roadmap-step%201%20of%207-lightgrey.svg)](#roadmap)
 [![Last commit](https://img.shields.io/github/last-commit/harry738/HyperSoftwareFactory)](https://github.com/harry738/HyperSoftwareFactory/commits/main)
 
 [Summary](#summary) · [Working factory](#the-working-factory) · [Roadmap](#roadmap) · [Architecture](#target-architecture) · [Autonomy](#autonomy-levels) · [Contributing](#contributing)
@@ -120,6 +120,7 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 | E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | In code and tested with stand-ins; the first real job is still to run |
 | E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, and a feedback loop from the PR | In code and tested with stand-ins |
 | E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine | In code and tested with stand-ins |
+| M | The merge path: PR policy rules, a CI wait limit, re-runs for infrastructure failures, conflicts fixed by the engine | Not started; built before E4 |
 | E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Not started |
 | E5 | Concurrency, a daily budget, a scheduled run | Not started |
 | E6 | Network allowlist, the container, and removal of the old per-repo path | Not started |
@@ -137,11 +138,13 @@ Then the features, in order:
 
 ### Now
 
-E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator. Then E2.
+E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator.
+
+Then track M, the merge path, ahead of E4 and E5: open PRs on real projects are held up by CI and conflicts more than by the code, so the factory learns to get a PR merged before it learns to open more of them.
 
 ### Not building
 
-Steering a run mid-flight, other models for the builder or reviewers, a merge queue, a webhook server, a mobile app. The build plan says why.
+Steering a run mid-flight, other models for the builder or reviewers, a merge queue beyond one PR at a time, a webhook server, a mobile app. The build plan says why.
 
 ## Contents
 

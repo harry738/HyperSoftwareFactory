@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.1 (2026-11-23) — sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.2 (2026-11-24) — puts the merge path ahead of throughput: a PR policy step (track M) is built before E4, and the lessons of the 23 Nov Binley run are carried in. v6.1 (2026-11-23) set the operating model (a central factory, deployed as a container), put the core engine first on a three-week timebox, and ordered the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -47,6 +47,8 @@ All state stays in the factory and GitHub, so a Hermes outage loses nothing.
 
 Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (about $2.50 a job in agent cost): ten merged, one rejected at intake. The factory merged one PR itself; a person merged the other nine, eight of them because the approver escalated under the project's always-stop rules. One job went through a CHANGES round, five ran the security reviewer, and none failed the gate. Only the first job has a written report ([pilot report](binley/pilot-report-2026-11-21.md)).
 
+A run on 23 Nov 2026 took 18 jobs for $90.15, about $5 a job. Its lessons are rows 8 to 12.
+
 Binley has no production, no users and no deploy. Its numbers show the mechanism works, not that it can be trusted, and its jobs do not count toward any autonomy level.
 
 | # | Learning | What we do |
@@ -58,6 +60,11 @@ Binley has no production, no users and no deploy. Its numbers show the mechanism
 | 5 | Acceptance criteria get narrowed or skipped on the way through (three of 11 jobs) | The approver escalates it today; the Dev council sees the original issue in its packet |
 | 6 | Windows cost most of the debugging | The engine moves to Linux; the Windows patches are deleted once the container works |
 | 7 | The judgment agents cost more than the build | Measure cost per agent in the event log, then try cheaper models where a script now does the checking |
+| 8 | A cached PASS is not evidence: one PR passed the gate on a cache replay of tests that failed on a fresh run | The project's `checks.sh` runs tests with the build cache bypassed (carried over) |
+| 9 | Each merge left other open PRs conflicted; one shared line cost three rounds | The engine re-checks open PRs after a merge and merges the base branch in itself (M5) |
+| 10 | Two of 18 jobs blocked on differences between the job's environment and CI before writing code | CI parity (carried over) |
+| 11 | Reviewers replied without writing their review file in four of 18 jobs | `run` goes by the file, not the reply: a reviewer with no file is run again |
+| 12 | GitHub merge rules look at the PR, and the `human-merge` label was only on the issue | The engine copies the label when it opens the PR (carried over) |
 
 ## How others do it
 
@@ -73,7 +80,7 @@ The [feature comparison](feature-comparison.md) covers six open-source and seven
 
 1. **Engine first, then features.** The engine is everything deterministic: the loop, the state machine, the gate, routing, isolation, caps, the event log, merge, and the file formats agents write.
 2. **Engine code does not wait for evidence; autonomy does.** The engine is built on a timebox. What the factory may do without the operator is earned on measured jobs.
-3. **Backpressure before forward pressure.** Checks, budgets and isolation land before anything that creates more work.
+3. **Backpressure before forward pressure.** Checks, budgets and isolation land before anything that creates more work. Getting an open PR merged is backpressure too, so the merge path (track M) comes before throughput (E5).
 4. **Enforce in scripts and platform settings, not in prompts.**
 5. **One real project until the engine track exits.**
 
@@ -93,7 +100,7 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E1.3 | `factory run <project>`: the script loop. One headless Claude Code run per stage, agents loaded from the factory and not from the project, all state on disk, safe to stop and restart | Done in code and tested end to end with stand-ins for GitHub and the model (`factory/test_run.py`). Not yet run with a real model |
 | E1.4 | The engine does every push and every GitHub call. Agent stages run without the GitHub token, in a clone with no production credentials | Done. Agent stages run with the token removed from their environment; as the same OS user, hard separation waits for the container (E6) |
 | E1.5 | The project's `setup.sh` runs once per worktree, with the package manager's cache shared across jobs | Done. The shared cache is the package manager's own store |
-| E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open. Needs the factory home, the project's token, a signed-in Claude Code CLI on the factory machine, and labelled issues |
+| E1.6 | First job on the first real project, from labelled issue to a PR waiting for the operator | Open. Needs the factory home, the project's token, a signed-in Claude Code CLI on the factory machine, and labelled issues. It also needs a project CI that finishes: runs on the base branch are not cancelled, and jobs start within minutes |
 | **E2** | **Limits, the log, and feedback** | |
 | E2.1 | Per stage: wall-clock timeout, turn cap and USD budget, plus a stall kill when a stage has produced no output for some minutes. A breach sends the job to a person | Done: limits in `config.json`, enforced by `factory/bin/run`; `job stop` hands the job over and `job retry` puts it back. The CLI cost cap is passed too, but whether it applies on a subscription login is unverified, so the per-job budget is computed by the engine |
 | E2.2 | Retry with backoff when a stage fails for a passing reason, such as a rate limit | Done: up to three more tries, resuming the failed session |
@@ -103,13 +110,20 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 | E3.1 | Always-stop rules: a `human-merge` label or a change under an always-stop path sends the job to the operator before any model is asked | Done: `job` checks the `human-merge` label and `sensitive_paths` when the reviews pass. A hit skips the approver and goes to the operator, and `job` refuses to merge it. `sensitive_paths` is the always-stop path list; there is no second list |
 | E3.2 | Path-based risk floor: the tier is computed from changed paths; intake may raise it, never lower it; no match is MEDIUM | Done: `risk_paths` in `config.json`. Sensitive paths count as high. When the paths raise the tier, the reviewers are re-routed for it |
 | E3.3 | A `council` stage in the state machine, in front of the hand-off to the operator. It passes straight through until the Dev council exists | Done: the stage exists and is switched on by a `council` key in `config.json`. Nothing sits in it yet, so `run` passes it through |
+| **M** | **The merge path** (built before E4; see the note under this table) | |
+| M1 | `job merge` stops waiting for CI after a time limit, and tells a cancelled run or an infrastructure failure from a failed check | Open. Today it waits with no limit, and anything but a pass goes to a person |
+| M2 | PR policy: an ordered list of rules in the project's `config.json`; the first match wins. A rule is a condition and one action from a fixed set: `notify`, `label`, `rerun`, `update`, `round`, `merge`, `stop-line`. A script evaluates it at the start of every `factory run`, for every open PR in the project. No match means `notify`. On a PR the factory did not open, only `notify`, `label`, `rerun` and `update` apply | Open. `job pr-feedback` already does the two `round` rules, for the factory's own PRs |
+| M3 | Stop the line: when the same check fails on three or more open PRs, or the base branch is red, no build round starts for that check and the operator is told once | Open |
+| M4 | Infrastructure failures: a failure that matches the project's patterns (runner lost, a container that did not start, a cancelled run) re-runs the failed jobs once and uses no build round | Open |
+| M5 | Conflicts: after any merge the engine re-checks the open PRs. A conflicted factory PR gets the base branch merged in, the gate re-run and a push. It goes to a person only when that merge itself conflicts | Open. Today a conflict goes straight to a person |
+| M6 | Merging is one PR at a time: bring it up to date, wait for green, merge. Only where the policy and the project's autonomy level both allow it; always-stop rules outrank the policy | Open. `unattended_merge` is the existing switch |
 | **E4** | **Reviewers, and what the operator sees** | |
 | E4.1 | Reviewer stages get read-only tools, set per stage by the engine | Open |
 | E4.2 | After review the engine checks the branch and tree are unchanged, and fails the round if not | Open |
 | E4.3 | The engine posts the reviewers' summaries, their evidence and the check log on the PR | Open |
 | E4.4 | Non-blocking reviewer notes become follow-up issues. They are not queued automatically | Open |
 | **E5** | **Throughput** | |
-| E5.1 | `concurrency` 2, then 3 | Open |
+| E5.1 | `concurrency` 2, then 3. Only after track M, and once the project's count of open PRs is falling. Start with jobs on disjoint paths | Open |
 | E5.2 | Daily USD budget per project | Open |
 | E5.3 | A scheduled run | Open |
 | **E6** | **The container** | |
@@ -119,7 +133,22 @@ Already done in this repo: the per-worktree checks lock, a re-runnable `job adva
 
 **How the feedback loop is triggered (E2.4).** GitHub does not let an account request changes on its own PR, and the factory opens PRs as the operator. So a person asks for another round with a PR comment or review that starts with `/factory`; a changes-requested review works too when the factory runs under a separate account. Only the operator and the logins in `trusted_logins` count. Feedback from a person gets a fresh round budget, as `job feedback` always has. A failed CI check starts a round on its own, but only inside the existing round budget and once per pushed commit.
 
-**Exit:** one command starts the container. A labelled issue on the first real project becomes a PR waiting for the operator with no manual step. A deliberately runaway stage is killed by its cap. Stopping and restarting `factory run` mid-job loses nothing.
+**Why the merge path comes first (track M).** A review of the operator's real projects on 24 Nov 2026 found open PRs held up by CI queues, conflicts and checks that failed for reasons outside the PR, more often than by the code under review. The engine as built would make that worse: it treats every failed check as the builder's fault and spends a build round on it, it waits for CI with no limit, and it sends every conflict to a person. More PRs (E5) on top of that is forward pressure.
+
+The policy is the default below, and a project can reorder or drop rules. It follows a PR until it merges or closes, the way a person watching it would.
+
+| When | Do |
+|---|---|
+| The same check fails on three or more open PRs, or the base branch is red | `stop-line`: tell the operator once, start no build rounds |
+| A failed check matches an infrastructure pattern | `rerun` the failed jobs, once per commit |
+| Any other failed check on a factory PR | `round` (exists today) |
+| The PR conflicts with the base branch | `update`: merge the base branch in, re-run the gate, push |
+| A `/factory` comment from a trusted login | `round` (exists today) |
+| Green, approved, LOW tier, no always-stop rule, and the autonomy level allows it | `merge`, one PR at a time |
+| Green and approved otherwise | `notify` |
+| No activity for a set number of days | `label` it stale |
+
+**Exit:** one command starts the container. A labelled issue on the first real project becomes a PR waiting for the operator with no manual step. A deliberately runaway stage is killed by its cap. Stopping and restarting `factory run` mid-job loses nothing. A check that fails for an infrastructure reason is re-run without a build round, and a conflicted factory PR is brought up to date without the operator.
 
 ---
 
@@ -202,6 +231,12 @@ Monitoring alerts and other sources, through the same tool-less summariser as F4
 | Complexity check, secret scan and dependency audit as examples in the template `checks.sh` | With the first project that lacks them; the readiness checklist reports the gap |
 | Verify the prices in `factory/config.json` against the published price list | Before the first cost figures are relied on |
 | A rule for narrowed acceptance criteria that a script can check | When the event log shows how often it happens |
+| The gate's tests run with the build cache bypassed, or with a cache keyed per job | In each project's `checks.sh`, with a line in the template; the readiness checklist asks |
+| The engine copies the `human-merge` label from the issue to the PR | With M2, which reads PR labels |
+| CI parity: the spec-writer checks that the environment has what the spec pins (packages, database extensions, runtime versions), and the builder is told that CI is slower and may run another OS | With the first real jobs (E1.6), in the project's `CONTEXT.md` |
+| A SQL checklist for the security reviewer: schema-qualify names in triggers and definer functions, pin `search_path`, test as the app role | In the learnings file (F3) of a project that has a SQL database |
+| Fewer shared hot-spot files, such as one `AGENTS.md` entry per package instead of one shared list | When M5 shows which files conflict most |
+| Compare Binley's copy of the engine with this one and port any hardening still missing | Before E6.3 deletes the old path |
 
 ---
 
@@ -209,7 +244,8 @@ Monitoring alerts and other sources, through the same tool-less summariser as F4
 
 - Steering a run while it is in progress. Feedback goes in between rounds.
 - Other models for the builder or the reviewers. Only council seats use other vendors.
-- A merge queue, a webhook server, a mobile app.
+- A webhook server, a mobile app.
+- A merge queue beyond merging one PR at a time (M6). GitHub's own merge queue is not offered for private repos on a personal account.
 - Parallel builders inside one spec, Prometheus metrics, microVM isolation. Each waits for evidence that it is needed.
 
 ## Open questions
@@ -218,9 +254,10 @@ Monitoring alerts and other sources, through the same tool-less summariser as F4
 2. Does the first real project have a deploy that can be rolled back (F6)?
 3. Do the model subscription's terms allow unattended runs? The documentation read for this plan does not say.
 4. Does the CLI's cost cap apply on a subscription login? Until that is known, the engine keeps its own cap computed from the run's usage.
+5. Should the operator's private repos move into one GitHub organisation? Self-hosted CI runners on a personal account are tied to one repo each, so one project can queue while another's runners sit idle. An organisation shares them as one pool, with labels and runner groups as the policy. The cost is a repo transfer: tokens, runner registrations and integrations have to be pointed at the new owner.
 
 ## What only the operator can do
 
 - Create the private factory home repo.
-- Create a fine-grained GitHub token per project (contents, pull requests, issues; no workflow scope, no admin), the model login token for the container, and the key for the council's models.
+- Create a fine-grained GitHub token per project (contents, pull requests, issues, and actions so the engine can re-run a failed job (M4); no workflow scope, no admin), the model login token for the container, and the key for the council's models.
 - Label the first few low-risk issues on the first real project.
