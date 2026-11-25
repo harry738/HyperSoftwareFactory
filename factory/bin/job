@@ -443,6 +443,69 @@ def hand_to_human(job):
     label("issue", job["issue"], add=LABELS["needs_human"])
 
 
+SECRET_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+SECRET = re.compile(r"(gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_-]{8,}")
+
+
+def publishable(job, text, limit):
+    """Agent and check output, made fit to post: tokens and local paths removed, nobody @mentioned,
+    and cut to `limit` characters (the end is kept: that is where a failure shows)."""
+    for value in filter(None, (os.environ.get(n) for n in SECRET_ENV)):
+        text = text.replace(value, "[secret]")
+    text = SECRET.sub("[secret]", text)
+    places = [(job.get("worktree"), "."), (str(JOBS), "<jobs>"), (str(REPO), "<repo>"), (str(Path.home()), "~")]
+    for path, name in places:
+        for form in filter(None, [path, path and path.replace("\\", "/"), path and path.replace("/", "\\")]):
+            text = text.replace(form, name)
+    text = re.sub(r"@(?=\w)", "@​", text)
+    return text if len(text) <= limit else "[cut]\n" + text[-limit:]
+
+
+def post_evidence(job):
+    """E4.3: what the reviewers saw and what the checks printed, on the PR, once per round."""
+    if not job["pr"]:
+        return
+    rd = round_dir(job)
+    parts = [f"### Factory: round {job['round']} evidence"]
+    for r in reviewers(job):
+        path = rd / f"review-{r}.md"
+        body = "\n\n".join(f"**{h}**\n{section(path, h)}" for h in ("Summary", "Evidence") if section(path, h))
+        parts.append(f"<details><summary>{r}: {job['reviews'].get(r)}</summary>\n\n"
+                     f"{publishable(job, body or '(nothing written)', 4000)}\n\n</details>")
+    log = rd / "checks.log"
+    if log.exists():
+        tail = "\n".join(log.read_text(errors="replace").rstrip().splitlines()[-60:])
+        parts.append(f"<details><summary>checks: {job.get('gate')}, last lines of the log</summary>\n\n"
+                     f"~~~~\n{publishable(job, tail, 8000)}\n~~~~\n\n</details>")
+    try:
+        comment("pr", job["pr"], "\n\n".join(parts))
+    except Refused as e:  # the evidence is for the operator to read; the job doesn't depend on it
+        print(f"{job['id']}: could not post the review evidence: {e}", file=sys.stderr)
+
+
+def file_follow_ups(job):
+    """E4.4: the reviewers' non-blocking notes become one issue, without the queue label."""
+    if job.get("followup_issue"):
+        return
+    notes = {}
+    for r in reviewers(job):
+        for n in range(1, job["round"] + 1):
+            path = round_dir(job, n) / f"review-{r}.md"
+            text = section(path, "Notes") if path.exists() else None
+            if text and text.strip().rstrip(".").lower() != "none":
+                notes.setdefault(text, r)
+    if not notes:
+        return
+    body = (f"Non-blocking notes from the reviews of #{job['issue']}. Not queued: add the `{LABELS['queue']}` "
+            "label to have the factory work on it.\n\n"
+            + "\n\n".join(f"## From the {r} reviewer\n\n{publishable(job, text, 4000)}" for text, r in notes.items()))
+    try:  # ponytail: a crash between this and the job's save files it twice
+        job["followup_issue"] = gh("issue", "create", "--title", f"Follow-ups from #{job['issue']}: {job['title']}",
+                                   "--body", body).strip()
+    except Refused as e:
+        print(f"{job['id']}: could not file the follow-up issue: {e}", file=sys.stderr)
+
+
 def git(job, *args, check=True):
     return run(["git", *args], cwd=job["worktree"], check=check)
 
@@ -622,8 +685,12 @@ def advance(job, stage):
             if last:
                 escalate(job, f"Review rounds exhausted. Outstanding CHANGES in round-{job['round']}/ "
                               f"from: {', '.join(changes)}.")
-            else:
-                next_round(job)
+
+        post_evidence(job)
+        if stage == "build":
+            next_round(job)
+        else:
+            file_follow_ups(job)
 
     elif old == "approve":
         line = first_line(d / "decision.md")

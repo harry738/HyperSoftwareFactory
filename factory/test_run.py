@@ -50,6 +50,10 @@ elif a[:2] == ["issue", "view"]:
     out({"number": i["number"], "title": i["title"], "body": i["body"], "author": {"login": "author"}, "state": i["state"],
          "labels": [{"name": l} for l in i["labels"]], "url": "https://example.test/issues/%d" % i["number"],
          "comments": [{"author": {"login": "operator"}, "body": c, "createdAt": "2026-01-01T00:00:00Z"} for c in i["comments"]]})
+elif a[:2] == ["issue", "create"]:
+    n = len(s["issues"]) + 1
+    s["issues"].append({"number": n, "title": opt("--title"), "body": opt("--body"), "labels": [], "state": "OPEN", "comments": []})
+    out("https://example.test/issues/%d" % n)
 elif a[:2] == ["issue", "comment"]:
     issue()["comments"].append(opt("--body"))
 elif a[:2] == ["issue", "edit"]:
@@ -134,7 +138,8 @@ elif agent.startswith("reviewer-"):
         (folder / "silent-done").write_text("")  # replies with its verdict, writes no review file
     else:
         (rd / ("review-%s.md" % agent.split("-", 1)[1])).write_text(
-            "VERDICT: PASS\n\n## Summary\n- fine\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n")
+            "VERDICT: PASS\n\n## Summary\n- fine, ask @someone\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n"
+            "\n## Notes\n- feature.txt could have a newline\n")
     if os.environ.get("FAKE_EDIT") == agent:  # a reviewer that commits to the branch it reviews
         (worktree / "feature.txt").write_text("edited by a reviewer\n")
         subprocess.run(["git", "-C", str(worktree), "-c", "user.email=r@example.test", "-c", "user.name=reviewer",
@@ -254,6 +259,12 @@ def test_run_takes_an_issue_to_a_pr_waiting_for_the_operator():
     pr, issue = state["prs"][0], state["issues"][0]
     assert pr["isDraft"] is False and pr["body"] == "Closes #1", pr
     assert "approved, waiting for you to merge" in pr["comments"][-1]["body"], pr["comments"]
+    evidence = pr["comments"][-2]["body"]
+    assert "round 1 evidence" in evidence and "feature.txt:1: read it" in evidence and "checks: PASS" in evidence, evidence
+    assert "@someone" not in evidence, "a review must not notify people"
+    follow = state["issues"][-1]
+    assert follow["title"] == "Follow-ups from #1: Add feature 1" and follow["labels"] == [], follow  # not queued
+    assert "could have a newline" in follow["body"] and j["followup_issue"].endswith(f"/{follow['number']}"), follow
     assert "factory:needs-human" in issue["labels"], issue
     git("--git-dir", str(TMP / "origin.git"), "rev-parse", "--verify", j["branch"])  # the factory pushed the branch
     made = calls()
