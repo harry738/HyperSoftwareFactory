@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 # Agent roster (proposal)
 
 Proposal only. Roles are for a multi-agent split of the deployable roadmap. They map onto agents and scripts that already exist in HyperSoftwareFactory where those exist. The operator remains the only merger and the only person who can approve Tier 3 plans, FullAuto, or going live. Auto-merge and auto-deploy are not adopted.

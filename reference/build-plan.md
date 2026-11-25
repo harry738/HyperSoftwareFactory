@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.6 (2026-11-25) — the one roadmap. It consolidates the v6.5 release sequence, the deployable-roadmap phases, the agent roster, the feature list, the provider spec and the two Gemini plans; their decisions are in [Roadmap decisions](#roadmap-decisions) and the old files are archived under `docs/archive/roadmap-proposals-2026-11-25/`. v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -23,12 +23,42 @@ This sequence supersedes the previous feature order and three-week estimate. E1�
 | R5 — Learning factory | Project knowledge packs, Kaizen (F3/A8), controlled evaluations, shadow Dev council (F1) | Measurable improvement against baseline; independently recorded operator/council verdicts. |
 | R6 — Evidence-gated autonomous factory | FullAuto (A1–A7), LOW-risk unattended merge and controlled deploy, market watch (F4), external intake (F8) | Per-project evidence gates met, sustained LOW-tier performance, proven recovery and explicit operator policy. |
 
+## Roadmap decisions
+
+Taken in v6.6. Each can be reversed by a reviewed change to this file, not by a proposal doc.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Which sequence is the spine? | The R1–R6 release table above. E/F/A identifiers stay as backlog IDs. |
+| 2 | One phase vocabulary? | R1–R6 only. The deployable Phases 0–4 and the README tracks are retired; their items are mapped below. |
+| 3 | Where do the deployable Phase 1 standards go? | R2.4: `AGENTS.md` checklist, Tier 1–3 mapped to low/medium/high, plan gate, ADR templates. |
+| 4 | Is the model-provider layer in scope? | Spec at [reference/llm-provider-integration.md](llm-provider-integration.md). Scheduled as R5.3, after the durable scheduler (R3.1). Not before R3. |
+| 5 | What may merge and deploy without a person? | Merging follows the R1.7 policy and the autonomy level, and always-stop rules come first. Deploy only in R4, with a rehearsed rollback. No unattended deploy before R6. |
+| 6 | Fail-closed merge (issue #26)? | R1.2, first in order. An unattended merge needs the boolean `true` in `config.json`; a missing or other value means a person merges. |
+| 7 | Can a council REWRITE exceed the round cap? | No. It stays inside the three-round cap, as [CONTEXT.md](../CONTEXT.md) requires. A sensitive path may be `stop` only (A2). |
+| 8 | What happens to the Gemini plans? | 1.1 and 1.3 go to R2.4; 2.3 to R2.1; 3.2 to R2.3; 4.1 to R5.1; 4.2 to R5.2. Not adopted: the pnpm/Vitest/`tsc` stack rule, a global 90% coverage gate, multi-tenant scope, and the "autonomous" wording. Own projects only. |
+| 9 | Where do the contested features go? | F5 holdout checks in R2. F7 second project and E5 concurrency in R3. F2 Hermes and F6 deploy in R4. F4 market watch and F8 intake in R6. |
+| 10 | Which headline metric and thresholds? | The North Star in the measurement section. The L1–L4 thresholds in the evidence track of this file, not the README. Serial merging (R1.9) is not a merge queue. |
+
+### Mapping of retired items
+
+| Retired item | Where it lives now |
+|---|---|
+| Deployable Phase 0, standing gates (the fail-closed default, and the rule that the operator merges) | R1.2 and R6.1 |
+| Deployable Phase 1, plan gate and Tier 1–3 | R2.4 |
+| Deployable Phase 2, concurrency and flaky checks | E5.1 and R1.6 |
+| Deployable Phase 3, artefact pack and the curator role | R5.1 |
+| Deployable Phase 4, holdout checks, deploy and second project | R2 (F5), R4 (F6) and R3 (F7) |
+| Agent roster, role cards and the model binding table | R2.4 and R5.2 |
+| Feature list, its legend and delivery order | Replaced by the release table; the legend is kept in the decisions above |
+| Gemini plans | Decision 8 |
+
 ### Priority engineering backlog
 
 | ID | Priority | Work item | Acceptance / dependency |
 |---|---|---|---|
 | R1.1 | P0 | First real run (E1.6), readiness doctor, CI parity | Confirm target required checks and scoped credentials; capture complete issue-to-PR evidence. |
-| R1.2 | P0 | Fail-closed merge defaults and config validation | Missing/invalid unattended setting denies automation; unknown policy or missing required CI never grants approval. |
+| R1.2 | P0 | Fail-closed merge defaults and config validation | Missing/invalid unattended setting denies automation; unknown policy or missing required CI never grants approval. Implemented in v6.6 (`job` and `run` allow an unattended merge only for the boolean `true`); its test is not yet verified, so the row is not Done. |
 | R1.3 | P0 | CI classification and merge integrity (E2.6/E5.4/E5.5) | Separate code, infrastructure, quota, pending/missing checks; pause infra failures; pin expected head SHA; re-review material changes. |
 | R1.4 | P0 | Bounded gate and budgets (E2/E3/E5.2) | Gate/lock timeout and cancellation; atomic aggregate budget reservations; treat unknown usage conservatively. |
 | R1.5 | P0 | Runtime security (E6) | Trusted control plane; OS-enforced per-job/stage isolation, scoped mounts, explicit environment allowlists, independent reviewer/gate outputs, egress limits, no host credentials or Docker socket. Central container alone is packaging, not isolation. |
@@ -39,11 +69,13 @@ This sequence supersedes the previous feature order and three-week estimate. E1�
 | R2.1 | P0 | Specification contract | Stable requirement/acceptance IDs, dependency and architecture/security constraints, out-of-scope and approved scope changes; no silently dropped criteria. Selectively adopt Spec Kit patterns. |
 | R2.2 | P0 | Independent assurance (E3/E4/F5) | Holdout tests from spec without diff, inaccessible to builder; regression, SAST, secrets/dependency scanning, architecture/complexity, UI/accessibility as relevant. Trace criteria to tests or justified evidence. |
 | R2.3 | P0 | Commit-bound PR evidence (E4.3/E4.4) | Candidate SHA, spec/check/reviewer evidence, independent reviewer evaluation; nonblocking findings become nonqueued issues. |
+| R2.4 | P0 | Project standards (deployable Phase 1; Gemini 1.1, 1.3) | `AGENTS.md` and `CONTEXT.md` checklist with the readiness doctor; Tier 1–3 mapped to low, medium and high risk; a plan gate before any `src/` edit (the spec must exist first); ADR templates. The acceptance test is a spec before any source change on a sample of issues. |
 | R3.1 | P1 | Durable scheduler (E5/F7) | Atomic claims, worker leases/heartbeat, recovery, priority/dependencies, physical-host capacity, project limits, reserved budgets; start with two then three disjoint jobs. |
 | R4.1 | P1 | Release engineering (F6) | Existing CI/CD adapters, environment contracts, artifact identity, staging health checks, approved production boundary and rehearsed rollback. |
 | R4.2 | P1 | Operations Centre and Hermes (E6.4/F2) | Read-only queue, worker health, costs, quality, evidence and release state; schedules and notifications without handing Hermes GitHub credentials; authenticated audited actions later. |
 | R5.1 | P1 | Project knowledge engine (F3) | Versioned role-specific context packs: requirements, ADRs, API contracts, dependencies, security, tests and learnings. Markdown/YAML/code index first. |
 | R5.2 | P1 | Kaizen and evaluations (F3/A8/F1) | Metrics from R1; regression corpus, controlled prompt/model/skill experiments, root cause, reviewed improvement PRs, shadow-only council. |
+| R5.3 | P1 | Model-provider layer | Schema first, then adapters, per [reference/llm-provider-integration.md](llm-provider-integration.md). Retry the same model on 429 and 5xx; never fall back on 400, auth, policy or budget errors; data leaving the LAN denied by default. Not before R3.1. |
 | R6.1 | P2 | Governed autonomy (A1–A7) | Separate implementation and activation; LOW tier initially; isolation, required CI, assurance, rollback and per-project evidence before operator opt-in. |
 | R6.2 | P2 | External intake (F4/F8) | Tool-less summarisation of untrusted inputs, provenance, deduplication, approved proposals; no automatic queueing before policy permits. |
 
@@ -310,6 +342,14 @@ Three items from the 23 Nov run need no work:
 - **Porting Binley's later factory changes back.** Checked on 24 Nov: since the harvest, Binley's factory files changed once, for a rule that belongs to that project.
 
 ---
+
+## Sources consolidated
+
+- `reference/build-plan.md` v6.4 on main: the engine table and the evidence track. Kept.
+- Build plan v6.5 (PR #42): the release sequence and the backlog. Kept, with its status column refreshed to main and R1.7 to R1.9 added.
+- `docs/roadmap/deployable-roadmap.md`, `feature-list-by-phase.md` and `agent-roster.md`, and the two Gemini plans: archived under `docs/archive/roadmap-proposals-2026-11-25/`. Their unique content is in the mapping above.
+- `docs/roadmap/llm-provider-integration.md`: moved to `reference/` as a spec.
+- The two review documents on main: archived with the proposals.
 
 ## Non-goals
 

@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 # Feature list by phase (proposal)
 
 Proposal only. No official new IDs are allocated. Status is against `main` @ `351b660` (plan v6.4 plus the pull request #47 docs) on 25 November 2026. Auto-merge and auto-deploy are not adopted.

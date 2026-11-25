@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 <!--
 Exported copy of a planning document. The source original was left in place and was not modified or deleted.
 

@@ -1,3 +1,5 @@
+> **Spec, not scheduled.** Design for the model-provider layer. The release it belongs to is set in [reference/build-plan.md](build-plan.md); until then it is not on the roadmap.
+
 # LLM provider integration (proposal)
 
 Local only. Not pushed. Not an official revision of `reference/build-plan.md`. The operator remains the only merger, and any paid provider spend needs his yes.
@@ -230,11 +232,11 @@ Verified against OpenRouter docs on 25 November 2026. Paid. Do not configure a l
     "gpu-box": {
       "connection": "lan",
       "kind": "openai_compatible",
-      "base_url": "https://192.168.10.20:8000/v1",
+      "base_url": "https://192.0.2.10:8000/v1",
       "api_style": "openai_chat",
       "auth": { "type": "bearer", "api_key_env": "FACTORY_LAN_LLM_TOKEN" },
       "health_path": "/models",
-      "allow_hosts": ["192.168.10.20"]
+      "allow_hosts": ["192.0.2.10"]
     },
     "openrouter": {
       "connection": "openrouter",
