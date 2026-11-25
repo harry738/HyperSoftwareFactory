@@ -129,7 +129,7 @@ python -m http.server --bind 127.0.0.1 8000
 # Open http://localhost:8000/dashboard.html
 ```
 
-The older registry-based multi-project dashboard is available via `python scripts/factory-dashboard.py`, configured with local project paths in `config/projects.yaml`. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
+The older registry-based multi-project dashboard is available via `python scripts/factory-dashboard.py`, which shows a tab per project in `config/projects.yaml` and in the factory home, each with its job board and its pull requests (read with `gh`; port 8020). CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
 
 ## Roadmap
 

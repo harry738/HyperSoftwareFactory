@@ -239,6 +239,21 @@
   }
   .md .summary ul { margin: 0 0 .6em; }
 
+  /* Pull requests (only under scripts/factory-dashboard.py) */
+  .prs { padding: 0 32px 32px; overflow-x: auto; }
+  .prs:empty { display: none; }
+  .prs h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  .prs table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .prs th, .prs td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+  .prs th { color: var(--muted); font-weight: 500; font-size: 11px; }
+  .prs td:not(.title) { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .prs a { color: var(--active); text-decoration: none; }
+  .prs .open, .prs .pass { color: var(--pass); }
+  .prs .merged { color: var(--merged); }
+  .prs .draft, .prs .none, .prs .closed { color: var(--muted); }
+  .prs .pending { color: var(--changes); }
+  .prs .fail { color: var(--human); }
+
   footer {
     padding: 0 32px 32px; font-family: var(--mono); font-size: 11px; color: var(--faint);
     display: flex; gap: 20px; flex-wrap: wrap;
@@ -252,6 +267,7 @@
     header { padding: 20px 16px 4px; }
     .banner { margin: 12px 16px 0; }
     .tabs { padding: 12px 16px 0; }
+    .prs { padding: 0 16px 24px; }
     .board { grid-template-columns: 1fr; padding: 16px 16px 32px; }
     footer { padding: 0 16px 24px; }
     .d-head { padding: 16px; }
@@ -275,6 +291,7 @@
 <nav class="tabs" id="tabs" aria-label="Projects"></nav>
 <div id="banner"></div>
 <main class="board" id="board"></main>
+<section class="prs" id="prs" aria-label="Pull requests"></section>
 <footer>
   <span>/factory run</span>
   <span>/factory run &lt;n&gt;</span>
@@ -461,6 +478,7 @@ async function poll() {
     const all = await Promise.all(projects.map((p) => p.installed ? loadJobs(jobsDir(p)) : []))
     jobs = all[projects.indexOf(current)]
     renderTabs(all)
+    renderPrs() // not awaited: GitHub is slower than the board
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
@@ -497,6 +515,37 @@ function renderTabs(all) {
       ${run ? `<span class="run">${run} running</span>` : ''}
       ${yours ? `<span class="yours">${yours} yours</span>` : ''}</a>`
   }).join('')
+}
+
+// Open PRs first, then the rest, newest first.
+async function renderPrs() {
+  const p = current
+  let html = ''
+  if (p.repo) {
+    try {
+      const { prs, error } = JSON.parse(await fetchText(`${p.slug}/prs.json`))
+      if (error) html = `<div class="banner">pull requests: ${esc(error)}</div>`
+      else {
+        prs.sort((a, b) => (b.state === 'OPEN') - (a.state === 'OPEN') || b.updatedAt.localeCompare(a.updatedAt))
+        const rows = prs.map((pr) => {
+          const open = pr.state === 'OPEN'
+          const state = open && pr.isDraft ? 'draft' : pr.state.toLowerCase()
+          const review = (pr.reviewDecision || '').toLowerCase().replace(/_/g, ' ')
+          return `<tr><td>${link(pr.url, `#${Number(pr.number)}`)}</td><td class="title">${esc(pr.title)}</td>
+            <td class="${esc(state)}">${esc(state)}</td><td class="${esc(pr.checks)}">${esc(pr.checks)}</td>
+            <td>${esc(review)}</td><td class="fail">${open && pr.mergeable === 'CONFLICTING' ? 'conflicts' : ''}</td>
+            <td>${esc(pr.updatedAt.slice(0, 10))}</td></tr>`
+        }).join('')
+        const open = prs.filter((pr) => pr.state === 'OPEN').length
+        html = `<h2>Pull requests · ${open} open</h2>` + (rows
+          ? `<table><tr><th>PR</th><th>Title</th><th>State</th><th>Checks</th><th>Review</th><th></th><th>Updated</th></tr>${rows}</table>`
+          : '<div class="empty">No pull requests.</div>')
+      }
+    } catch (err) {
+      html = `<div class="banner">${esc(err.message)}</div>`
+    }
+  }
+  if (p === current && $('prs').innerHTML !== html) $('prs').innerHTML = html
 }
 
 function pickProject() {
