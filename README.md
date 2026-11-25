@@ -129,7 +129,7 @@ python -m http.server --bind 127.0.0.1 8000
 # Open http://localhost:8000/dashboard.html
 ```
 
-The older registry-based multi-project dashboard is available via `python scripts/factory-dashboard.py`, configured with local project paths in `config/projects.yaml`. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
+`python scripts/factory-dashboard.py` serves every project in one dashboard (http://localhost:8020/): a tab per project in `config/projects.yaml` and in the factory home (`$FACTORY_HOME`), each with its job board and its pull requests, read with a signed-in `gh`. Restart it after onboarding a project. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
 
 ## Roadmap
 
@@ -185,7 +185,7 @@ pip install -r requirements.txt
 python scripts/factory-onboard.py --interactive
 ```
 
-The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
+The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find the boards of per-repo installs.
 
 The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
 
