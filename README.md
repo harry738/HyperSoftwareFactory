@@ -142,7 +142,7 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 | E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | In code and tested with stand-ins; the first real job is still to run |
 | E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, and a feedback loop from the PR | In code and tested with stand-ins |
 | E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine; a gate that runs with the build cache off | In code and tested with stand-ins |
-| E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Not started |
+| E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Read-only reviewers and the branch-unchanged check are in code and tested with stand-ins; the rest is open |
 | E5 | Concurrency, a daily budget, a scheduled run | Daily budget in code and tested with stand-ins; the rest not started |
 | E6 | Network allowlist, the container, and removal of the old per-repo path | Not started |
 
