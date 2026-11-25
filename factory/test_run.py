@@ -254,6 +254,8 @@ def test_reviewers_get_read_only_tools():
     args = calls()[3]["args"]
     assert "Bash" not in args[args.index("--tools") + 1:args.index("--allowedTools")], args  # no shell at all
     assert "+++ b/feature.txt" in (folder(1) / "round-1" / "changes.diff").read_text()
+    assert "--setting-sources=" in args and "--strict-mcp-config" in args, args  # the branch cannot widen its review
+    assert "--setting-sources=" not in calls()[2]["args"], "the builder still loads the project's settings"
     assert builder == ["Read", "Grep", "Glob", "Bash", "Edit", "Write"], builder  # other stages keep their own tools
 
 

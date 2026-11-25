@@ -190,13 +190,16 @@ def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None
               f"Issue: #{j['issue']}. Config: {LAYOUT['config'].as_posix()}. Checks command: {checks}.")
     # The agent's instructions go in by file, and it gets exactly its own tools: nothing else is
     # available (--tools), and nothing needs a person to approve it (--allowedTools, dontAsk).
-    # Only the project's own settings load, never the operator's personal plugins and hooks.
+    # Only the project's own settings load, never the operator's personal plugins and hooks. A narrowed
+    # agent loads none at all, and no MCP servers: the branch under review could otherwise add allow
+    # rules, hooks or servers to its own review.
     instructions = d / f"agent-{agent}.md"
     instructions.write_text(definition["prompt"], encoding="utf-8")
     exe = shutil.which(CLAUDE[0]) or CLAUDE[0]
     base = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
             "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
-            "--output-format", "stream-json", "--verbose", "--setting-sources", "project",
+            "--output-format", "stream-json", "--verbose",
+            *(["--setting-sources=", "--strict-mcp-config"] if allow else ["--setting-sources", "project"]),
             "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
             "--permission-mode", "dontAsk", "--tools", *(tools or definition["tools"]),
             "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
