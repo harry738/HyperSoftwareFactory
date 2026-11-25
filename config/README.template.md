@@ -5,6 +5,8 @@
   that works in under a minute, then depth. Delete any section you
   can't fill with real content: an empty section reads worse than none.
   Keep badges to ones that are true today (no CI badge without CI).
+  Use real evidence, label target-state visuals, and apply the factory's shared
+  Mermaid design tokens; preserve a project's own approved product identity.
 -->
 <div align="center">
 
@@ -15,9 +17,9 @@
 [![License](https://img.shields.io/github/license/$repo)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/$repo)](https://github.com/$repo/commits)
 [![Issues](https://img.shields.io/github/issues/$repo)](https://github.com/$repo/issues)
-[![Built by HyperSoftwareFactory](https://img.shields.io/badge/built%20by-HyperSoftwareFactory-D97757)](https://github.com/harry738/HyperSoftwareFactory)
+[![Built by HyperSoftwareFactory](https://img.shields.io/badge/built%20by-HyperSoftwareFactory-55e6bc?style=flat-square&labelColor=091b23)](https://github.com/harry738/HyperSoftwareFactory)
 
-[Overview](#overview) · [Quick start](#quick-start) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing)
+[Overview](#overview) · [Quick start](#quick-start) · [Architecture](#architecture) · [Evidence](#evidence) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 </div>
 
@@ -42,11 +44,20 @@ cd $slug
 ## Architecture
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"background":"#091b23","primaryColor":"#18343d","primaryTextColor":"#e3eeef","primaryBorderColor":"#55e6bc","lineColor":"#7bb7e4","secondaryColor":"#10262f","tertiaryColor":"#10262f","clusterBkg":"#10262f","clusterBorder":"#3d7470","edgeLabelBackground":"#10262f","fontFamily":"monospace"}}}%%
 flowchart LR
     U["User"] --> A["App"]
     A --> S["Service"]
     S --> D[("Data")]
+    classDef input fill:#18343d,stroke:#7bb7e4,color:#e3eeef
+    classDef factory fill:#18343d,stroke:#55e6bc,color:#e3eeef
+    class U,D input
+    class A,S factory
 ```
+
+## Evidence
+
+Link to actual tests, release evidence or a recorded product demonstration. State the environment and limitations. Remove this section until evidence exists; do not claim production readiness from a mock-up.
 
 ## Roadmap
 
@@ -54,7 +65,7 @@ The roadmap lives in [`docs/product/roadmap.yaml`](docs/product/roadmap.yaml) an
 
 | Status | Item |
 |---|---|
-| Done | Project setup, factory onboarding ($onboarded) |
+| Draft | Factory onboarding draft generated ($onboarded); verify readiness before marking complete |
 | Next | First feature |
 
 ## Contributing

@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Software Factory</title>
+<title>HyperSoftwareFactory / Control room</title>
 <style>
   :root {
-    --bg: #14151b;
-    --panel: #1a1c24;
-    --card: #20222c;
-    --card-hover: #252835;
-    --line: #2b2e3b;
-    --text: #e4e5ea;
-    --muted: #868ba0;
-    --faint: #5b6075;
-    --active: #8be9fd;
-    --pass: #50fa7b;
-    --changes: #ffb86c;
-    --human: #ff5555;
-    --merged: #bd93f9;
+    --bg: #091b23;
+    --panel: #10262f;
+    --card: #18343d;
+    --card-hover: #204447;
+    --line: #3d7470;
+    --text: #e3eeef;
+    --muted: #a4bfc6;
+    --faint: #88a6ad;
+    --active: #7bb7e4;
+    --pass: #55e6bc;
+    --changes: #e8bc70;
+    --human: #f27e75;
+    --merged: #bdabed;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
@@ -36,7 +36,8 @@
     display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
     flex-wrap: wrap; padding: 28px 32px 8px;
   }
-  h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { margin: 0; font: 700 18px/1.4 var(--mono); letter-spacing: -0.025em; color: var(--pass); }
+  .brand-kicker { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; white-space: nowrap; }
   .status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .status .dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -285,7 +286,7 @@
 </head>
 <body>
 <header>
-  <h1>Software factory</h1>
+  <h1>HyperSoftwareFactory <span class="brand-kicker">/ CONTROL ROOM</span></h1>
   <div class="status" id="status">connecting…</div>
 </header>
 <nav class="tabs" id="tabs" aria-label="Projects"></nav>
