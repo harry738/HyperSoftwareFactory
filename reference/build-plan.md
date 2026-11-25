@@ -34,7 +34,7 @@ Taken in v6.6. Each can be reversed by a reviewed change to this file, not by a 
 | 3 | Where do the deployable Phase 1 standards go? | R2.4: `AGENTS.md` checklist, Tier 1–3 mapped to low/medium/high, plan gate, ADR templates. |
 | 4 | Is the model-provider layer in scope? | Spec at [reference/llm-provider-integration.md](llm-provider-integration.md). Scheduled as R5.3, after the durable scheduler (R3.1). Not before R3. |
 | 5 | What may merge and deploy without a person? | Merging follows the R1.7 policy and the autonomy level, and always-stop rules come first. Deploy only in R4, with a rehearsed rollback. No unattended deploy before R6. |
-| 6 | Fail-closed merge (issue #26)? | R1.2, first in order. An unattended merge needs the boolean `true` in `config.json`; a missing or other value means a person merges. |
+| 6 | Fail-closed merge (issue #26)? | R1.2, first in order. The rule: an unattended merge needs the boolean `true` in `config.json`, and a missing or other value means a person merges. The code does not do this yet (R1.2). |
 | 7 | Can a council REWRITE exceed the round cap? | No. It stays inside the three-round cap, as [CONTEXT.md](../CONTEXT.md) requires. A sensitive path may be `stop` only (A2). |
 | 8 | What happens to the Gemini plans? | 1.1 and 1.3 go to R2.4; 2.3 to R2.1; 3.2 to R2.3; 4.1 to R5.1; 4.2 to R5.2. Not adopted: the pnpm/Vitest/`tsc` stack rule, a global 90% coverage gate, multi-tenant scope, and the "autonomous" wording. Own projects only. |
 | 9 | Where do the contested features go? | F5 holdout checks in R2. F7 second project and E5 concurrency in R3. F2 Hermes and F6 deploy in R4. F4 market watch and F8 intake in R6. |
@@ -58,7 +58,7 @@ Taken in v6.6. Each can be reversed by a reviewed change to this file, not by a 
 | ID | Priority | Work item | Acceptance / dependency |
 |---|---|---|---|
 | R1.1 | P0 | First real run (E1.6), readiness doctor, CI parity | Confirm target required checks and scoped credentials; capture complete issue-to-PR evidence. |
-| R1.2 | P0 | Fail-closed merge defaults and config validation | Missing/invalid unattended setting denies automation; unknown policy or missing required CI never grants approval. Implemented in v6.6 (`job` and `run` allow an unattended merge only for the boolean `true`); its test is not yet verified, so the row is not Done. |
+| R1.2 | P0 | Fail-closed merge defaults and config validation | Missing/invalid unattended setting denies automation; unknown policy or missing required CI never grants approval. Not done. The engine change in `job` and `run` is not committed and its test is unverified, so a missing `unattended_merge` key still means on. |
 | R1.3 | P0 | CI classification and merge integrity (E2.6/E5.4/E5.5) | Separate code, infrastructure, quota, pending/missing checks; pause infra failures; pin expected head SHA; re-review material changes. |
 | R1.4 | P0 | Bounded gate and budgets (E2/E3/E5.2) | Gate/lock timeout and cancellation; atomic aggregate budget reservations; treat unknown usage conservatively. |
 | R1.5 | P0 | Runtime security (E6) | Trusted control plane; OS-enforced per-job/stage isolation, scoped mounts, explicit environment allowlists, independent reviewer/gate outputs, egress limits, no host credentials or Docker socket. Central container alone is packaging, not isolation. |
