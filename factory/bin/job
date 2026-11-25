@@ -443,6 +443,102 @@ def hand_to_human(job):
     label("issue", job["issue"], add=LABELS["needs_human"])
 
 
+SECRET_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+SECRET = re.compile(r"(gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_-]{8,}")
+CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # a NUL cannot go in a command-line argument
+HOME_DIR = re.compile(r"((?:[\\/]+)(?:Users|home)(?:[\\/]+))[^\\/\s:\"']+", re.I)
+
+
+def path_pattern(path):
+    """`path` as tools may print it: either slash, doubled in escaped output, any case,
+    and a Windows drive also as Git Bash writes it (/c/...)."""
+    parts = [p for p in re.split(r"[\\/]+", str(path)) if p]
+    if not parts:
+        return None
+    drive = re.fullmatch(r"([A-Za-z]):", parts[0])
+    if drive:
+        head = rf"(?:{drive[1]}:|(?:/cygdrive|/mnt)?/{drive[1]})"
+        parts = parts[1:]
+    else:
+        head = ""
+    sep = r"[\\/]+"
+    return re.compile(head + "".join(sep + re.escape(p) for p in parts), re.I)
+
+
+def publishable(job, text, limit):
+    """Agent and check output, made fit to post: tokens and local paths removed, nobody @mentioned,
+    and cut to `limit` characters (the end is kept: that is where a failure shows)."""
+    text = CONTROL.sub("", text)
+    for value in filter(None, (os.environ.get(n) for n in SECRET_ENV)):
+        text = text.replace(value, "[secret]")
+    text = SECRET.sub("[secret]", text)
+    places = [(job.get("worktree"), "."), (JOBS, "<jobs>"), (REPO, "<repo>"), (LAYOUT["checks"].parent, "<config>"),
+              (os.environ.get("FACTORY_HOME"), "<factory-home>"), (Path.home(), "~")]
+    for path, name in places:
+        pattern = path and path_pattern(path)
+        if pattern:
+            text = pattern.sub(lambda m: name, text)
+    text = HOME_DIR.sub(r"\1[user]", text)  # backstop: any other user's folder name
+    text = re.sub(r"@(?=\w)", "@\u200b", text)
+    return text if len(text) <= limit else "[cut]\n" + text[-limit:]
+
+
+def fenced(text):
+    """In a code block the text cannot break out of, so nothing in it renders."""
+    fence = "~" * max([4, *(len(run) + 1 for run in re.findall(r"~{4,}", text))])
+    return f"{fence}\n{text}\n{fence}"
+
+
+def post_evidence(job):
+    """E4.3: what the reviewers saw and what the checks printed, on the PR, once per round."""
+    if not job["pr"]:
+        return
+    rd = round_dir(job)
+    try:  # the evidence is for the operator to read; the job doesn't depend on it
+        names = reviewers(job)
+        parts = [f"### Factory: round {job['round']} evidence"]
+        for r in names:
+            path = rd / f"review-{r}.md"
+            body = "\n\n".join(f"{h}:\n{section(path, h)}" for h in ("Summary", "Evidence") if section(path, h))
+            parts.append(f"<details><summary>{r}: {job['reviews'].get(r)}</summary>\n\n"
+                         f"{fenced(publishable(job, body or '(nothing written)', 16000 // max(len(names), 1)))}\n\n</details>")
+        log = rd / "checks.log"
+        if log.exists():
+            tail = "\n".join(log.read_text(errors="replace").rstrip().splitlines()[-60:])
+            parts.append(f"<details><summary>checks: {job.get('gate')}, last lines of the log</summary>\n\n"
+                         f"{fenced(publishable(job, tail, 8000))}\n\n</details>")
+        comment("pr", job["pr"], "\n\n".join(parts))
+    except (Refused, OSError, ValueError) as e:
+        print(f"{job['id']}: could not post the review evidence: {e}", file=sys.stderr)
+
+
+def file_follow_ups(job):
+    """E4.4: the reviewers' non-blocking notes become one issue, without the queue label. Notes from
+    rounds after it was filed (feedback sent the job back) go on that issue as a comment."""
+    try:
+        notes, done = {}, job.get("followup_round", 0)
+        for r in reviewers(job):
+            for n in range(done + 1, job["round"] + 1):
+                path = round_dir(job, n) / f"review-{r}.md"
+                text = section(path, "Notes") if path.exists() else None
+                if text and text.strip().rstrip(".").lower() != "none":
+                    notes.setdefault(text, r)
+        if not notes:
+            return
+        # capped: a Windows command line holds 32767 characters
+        body = publishable(job, "\n\n".join(f"## From the {r} reviewer\n\n{text}" for text, r in notes.items()), 20000)
+        if job.get("followup_issue"):
+            comment("issue", job["followup_issue"].rsplit("/", 1)[-1], body)
+        else:  # ponytail: a crash between this and the job's save files it twice
+            intro = (f"Non-blocking notes from the reviews of #{job['issue']}. Not queued: add the "
+                     f"`{LABELS['queue']}` label to have the factory work on it.\n\n")
+            job["followup_issue"] = gh("issue", "create", "--title", f"Follow-ups from #{job['issue']}: {job['title']}",
+                                       "--body", intro + body).strip()
+        job["followup_round"] = job["round"]
+    except (Refused, OSError, ValueError) as e:
+        print(f"{job['id']}: could not file the follow-up issue: {e}", file=sys.stderr)
+
+
 def git(job, *args, check=True):
     return run(["git", *args], cwd=job["worktree"], check=check)
 
@@ -622,8 +718,10 @@ def advance(job, stage):
             if last:
                 escalate(job, f"Review rounds exhausted. Outstanding CHANGES in round-{job['round']}/ "
                               f"from: {', '.join(changes)}.")
-            else:
-                next_round(job)
+
+        post_evidence(job)
+        if stage == "build":
+            next_round(job)
 
     elif old == "approve":
         line = first_line(d / "decision.md")
@@ -655,6 +753,10 @@ def advance(job, stage):
 
     if stage == "needs-human":
         hand_to_human(job)
+
+    # after the hand-off: if that fails, the transition is run again and must not file a second issue
+    if old == "review" and stage != "build":
+        file_follow_ups(job)
 
     if old == "review" or stage in TERMINAL:  # binley: the review dev server ends with the review
         proc.stop_port(port(job, 1))
