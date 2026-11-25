@@ -429,18 +429,19 @@ A job whose `api_cost_usd` total reaches `job_budget_usd` (or the project reache
 
 ## 11. Security
 
-- Keys and tokens live in `deploy/.env` or the process environment, already gitignored. Config stores only the **name** of the variable.
-- Stage environments receive **only** the credential the bound provider needs. An Ollama-only stage does not get `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`. GitHub tokens stay out of every agent stage (already true).
-- Provider secrets are never written to worktrees, `usage.jsonl`, `events.jsonl`, review files, or PR bodies (`SECRET_ENV` must grow the new names).
-- Prompts must not be fed raw secrets. The existing "all secrets stay outside the sandbox" hard rule still applies; the provider layer does not relax it.
-- E6: each provider declares `allow_hosts`. Public cloud hosts go on the HTTPS egress list only after the operator enables that provider. Private hosts go on the private-endpoint list (§4.2). A provider with no allow-hosts entry fails closed.
-- Data handling: local and LAN prompts stay on the machine or the LAN. OpenRouter is a third party; even with `data_collection: "deny"` and `zdr: true`, the content leaves the LAN. Retention is whatever OpenRouter and its upstream document — the factory should not invent a guarantee.
-- The v6.4 note still holds: the container is not a hard boundary between engine and agent (one user). The layer must not put unused keys in a stage environment and must not treat the container as sufficient isolation.
+Four security boundaries, from [Agent Baseline, entry 14](../reference-library/14-agent-baseline-secure-software-factory.md), apply to every provider connection. The factory stays at **L2 (workflow-orchestrated)** autonomy: the orchestrator script chooses the next step and the tools; agents never grant themselves access; **L3 and L4 are out of scope.** Switching a model or a connection must not raise the autonomy level.
+
+| Boundary | What it means here |
+|---|---|
+| **Sandbox** | Keys and tokens live in `deploy/.env` or the process environment, already gitignored. Config stores only the **name** of the variable. Prompts must not be fed raw secrets. The existing "all secrets stay outside the sandbox" hard rule still applies; the provider layer does not relax it. The v6.4 note still holds: the container is not a hard boundary between engine and agent (one user). The layer must not put unused keys in a stage environment and must not treat the container as sufficient isolation. |
+| **Network** | E6: each provider declares `allow_hosts`. Public cloud hosts go on the HTTPS egress list only after the operator enables that provider. Private hosts go on the private-endpoint list (§4.2). A provider with no allow-hosts entry fails closed. Data handling: local and LAN prompts stay on the machine or the LAN. OpenRouter is a third party; even with `data_collection: "deny"` and `zdr: true`, the content leaves the LAN. Retention is whatever OpenRouter and its upstream document — the factory should not invent a guarantee. `data_leaving_lan` defaults to deny; a missing key fails closed. |
+| **Supply chain** | Provider SDKs and model-server binaries are pinned and reviewed like any other dependency. A job must not `pip install` or pull an unlisted model image to "make the binding work." OpenRouter and other paid hosts wait for the operator's yes before they are added to the allowlist. |
+| **Identity / access** | Stage environments receive **only** the credential the bound provider needs. An Ollama-only stage does not get `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`. GitHub tokens stay out of every agent stage (already true). Provider secrets are never written to worktrees, `usage.jsonl`, `events.jsonl`, review files, or PR bodies (`SECRET_ENV` must grow the new names). Agents cannot grant themselves a provider, a key, or a higher autonomy level. |
 
 ## 12. Observability
 
 - Every call already planned for `usage.jsonl` / `events.jsonl` also records `provider`, `connection`, `fallback_used`, and `latency_ms`.
-- Dashboard tiles in Phase 4 can then show spend by provider, first-pass green rate, and retry counts without a Prometheus stack (v6.4 non-goal).
+- Dashboard tiles in Phase 4 can then show spend by provider, **cost per accepted change** (headline metric, entry 11), first-pass green rate, and retry counts without a Prometheus stack (v6.4 non-goal).
 - Egress and private-endpoint proxies should keep their ALLOW / DENY logs, including LAN destinations.
 
 ## 13. Testing
@@ -457,7 +458,7 @@ Roles from `agent-roster.md`. The **Orchestrator is a script and has no model.**
 
 | Role | Default binding (today) | Allowed connections | Fail-closed? | Notes |
 |---|---|---|---|---|
-| Orchestrator | none | — | — | Script: `factory run`, `job`, `gate`, `route`. Owns the router, budgets, rate limits, event log, and GitHub token. |
+| Orchestrator | none | — | — | Script: `factory run`, `job`, `gate`, `route`. Owns the router, budgets, rate limits, event log, and GitHub token. Enforces L2 and the four security boundaries (entry 14). |
 | Discovery / Spec | harness `claude-code` / `fable` (intake + spec-writer) | harness, local, LAN, OpenRouter | no (residency still applies) | Good first raw-API or local-model candidate once quality is measured. |
 | Planner | same spec-writer path today | harness, local, LAN, OpenRouter | no (residency still applies) | |
 | Builder | harness `claude-code` / `opus` | harness first; raw local/LAN only if a later harness or proven tool-loop exists | no, but do not silently swap the coding model mid-job | Changing this is the v6.4 non-goal the operator must explicitly relax. |
@@ -466,6 +467,7 @@ Roles from `agent-roster.md`. The **Orchestrator is a script and has no model.**
 | Security reviewer | harness `claude-code` / `opus` | harness, or a the operator-listed equivalent only | **yes** | Template already pins `opus`. Never fall to haiku or an unlisted local 7B. |
 | Release / Ops | none | script + the operator | — | No model required. |
 | Research / F4 watcher | none today | **prefer local or LAN** for untrusted-source summarising; OpenRouter only with residency allow and the operator's yes | yes if a required check cannot run | Runs outside the factory container. Cheapest-first input checks still apply (`docs/reference-library/03-layered-llm-guardrails.md`). |
+| Curator | none today (optional later) | prefer local or LAN | no (residency still applies) | Knowledge-loop role tied to F3 ([entry 05](../reference-library/05-harrison-chase-knowledge-factory.md)). No GitHub token; never merges. |
 | PM / product steer | none | — | — | The operator. |
 
 ## 15. Adopt vs build
