@@ -41,11 +41,11 @@ HyperSoftwareFactory is a **central control plane for agent-assisted software de
 | :--- | :--- | :--- |
 | One issue, one pull request and one persisted job record. | Deterministic checks and routed code, security, UI and UX review. | Bounded rework, budget limits, policy decisions and measured evidence. |
 
-**Implemented in code:** central CLI, worktrees, headless agents, risk/path routing, stage and job budgets, checks, reviews, PR feedback and append-only events. **Not yet proven:** the full central runner on a real project, hardened isolation, live deployment and autonomous operations.
+**Implemented in code:** central CLI, worktrees, headless agents, risk/path routing, stage, job and daily budgets, checks, read-only reviews, PR feedback and append-only events. **Not yet proven:** the full central runner on a real project, hardened isolation, live deployment and autonomous operations.
 
 ## Quick start
 
-**Requirements:** Python 3, Git, a signed-in GitHub CLI (`gh`), a signed-in Claude Code CLI and a target repository with useful tests and CI. The source is free, although model/API execution may incur costs. Linux/WSL is the current engine target; Docker packaging is planned.
+**Requirements:** Python 3, Git, a signed-in GitHub CLI (`gh`), a signed-in Claude Code CLI, bash (and `lsof` on Linux) and a target repository with useful tests and CI. The source is free, although model/API execution may incur costs. Linux/WSL is the current engine target; Docker packaging is planned.
 
 ```bash
 git clone https://github.com/harry738/HyperSoftwareFactory.git
@@ -85,7 +85,7 @@ flowchart LR
     A -- "Human required" --> H["Operator"]
     A -- "Allowed" --> P["Pull request / merge"]
     H --> P
-    P -. "CI and review feedback" .-> T
+    P -. "CI and review feedback" .-> B
     classDef agent fill:#eef4ff,stroke:#6682b5,color:#172033
     classDef assure fill:#e7f8f1,stroke:#218364,color:#14523f
     classDef human fill:#fff4df,stroke:#b78329,color:#684a17
@@ -94,7 +94,7 @@ flowchart LR
     class H human
 ```
 
-**Recovery:** gate failures and reviewer-requested changes trigger bounded repair (three rounds by default); risk policy can hand work to the operator. A reviewer verdict alone does not override protected paths or required CI. Reviewer read-only isolation and host/network sandboxing remain hardening work.
+**Recovery:** gate failures and reviewer-requested changes trigger bounded repair (three rounds by default); risk policy can hand work to the operator. A reviewer verdict alone does not override protected paths or required CI. Reviewers have read-only tools and the engine checks the branch is unchanged after review (the UI and UX reviewers still run `node`, which can write elsewhere). These limits are tested with stand-ins only, and host and network sandboxing is still to do.
 
 ### Central multi-project model
 
@@ -129,9 +129,11 @@ python -m http.server --bind 127.0.0.1 8000
 # Open http://localhost:8000/dashboard.html
 ```
 
-`python scripts/factory-dashboard.py` serves every project in one dashboard (http://localhost:8020/): a tab per project in `config/projects.yaml` and in the factory home (`$FACTORY_HOME`), each with its job board and its pull requests, read with a signed-in `gh`. Restart it after onboarding a project. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
+That single-board page shows a per-repo install only. `python scripts/factory-dashboard.py` serves every project in one dashboard (http://localhost:8020/): a tab per project in `config/projects.yaml` and in the factory home (`$FACTORY_HOME`), each with its job board and its pull requests, read with a signed-in `gh`. Restart it after onboarding a project. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
 
 ## Roadmap
+
+**Evidence so far.** All from Binley, the fictional demonstrator. The first run (to 22 Nov 2026) was 11 jobs at about $2.50 each: ten merged, one rejected at intake. The factory merged one PR itself and a person merged nine, eight of them after the approver escalated under the project's always-stop rules. A second run on 23 Nov put 18 more jobs through for $90.15. This shows the mechanism works, not that it can be trusted: Binley has no production and no users. See the [pilot report](reference/binley/pilot-report-2026-11-21.md) and [what Binley validated](reference/build-plan.md#what-binley-validated).
 
 The objective is one factory that takes signals to deployed, verified, monitored software across the operator's own projects, with the operator setting policy. Binley tested whether the idea works; it does, and it is closed.
 
@@ -139,12 +141,12 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 
 | Engine track | Goal | Status |
 |---|---|---|
-| E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | In code and tested with stand-ins; the first real job is still to run |
-| E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, and a feedback loop from the PR | In code and tested with stand-ins |
-| E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine; a gate that runs with the build cache off | In code and tested with stand-ins |
-| E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Read-only reviewers and the branch-unchanged check are in code and tested with stand-ins; the rest is open |
-| E5 | Concurrency, a daily budget, a scheduled run | Daily budget in code and tested with stand-ins; the rest not started |
-| E6 | Network allowlist, the container, and removal of the old per-repo path | Network allowlist and container built and tested with stand-ins; removing the old path and the web console are open |
+| E1 | Factory home, `factory onboard`, and `factory run` taking one job end to end on the first real project | E1.1–E1.5 done, tested with stand-ins; E1.6, the first real job, is open |
+| E2 | Per-stage time, turn and cost caps, stall kill, retry, the event log, a feedback loop from the PR, a spec hand-off, and a stop when CI never starts | E2.1–E2.6 done, tested with stand-ins |
+| E3 | Always-stop rules and the path-based risk floor in scripts, a council slot in the state machine, a gate with the build cache off, and a re-run for flaky checks | E3.1–E3.4 done, tested with stand-ins; E3.5 (flaky checks) is open |
+| E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues, a send-back for a missing review | E4.1, E4.2 and E4.5 done, tested with stand-ins; E4.3 and E4.4 are open |
+| E5 | Concurrency, a daily budget, a scheduled run, and merge-main rounds when the base moves | E5.2 (daily budget) done, tested with stand-ins; the rest is open |
+| E6 | Network allowlist, the container, removal of the old per-repo path, and a read-only web console | E6.1 and E6.2 (allowlist and container) done, not yet run signed in; E6.3 and E6.4 are open |
 
 Then the features, in order:
 
@@ -157,11 +159,11 @@ Then the features, in order:
 7. **A second project.**
 8. **Other external intake.**
 
-Alongside these, **FullAuto mode**: an option the operator selects for one job (a label), one run (a flag) or a whole project, under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
+Alongside these, **FullAuto mode**: an option the operator selects for one job (a label), one run (a flag) or a whole project, under which no job waits for a person. The engine would merge by rule and by a model's judgment inside a policy the operator writes, revert a merge that breaks the base branch, and widen or narrow what it allows itself from its own record. **None of it is built yet.** The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
 
 ### Now
 
-E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator. Then E2.
+E1.6: the first job on the first real project. The commands exist; it needs the factory home, the project token, a signed-in Claude Code CLI and a few labelled issues. Every job stops for the operator.
 
 ### Not building
 
@@ -173,10 +175,13 @@ Steering a run mid-flight, other models for the builder or reviewers, a merge qu
 |---|---|
 | [`factory/`](factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, `settings.example.json`, live `dashboard.html` |
 | [`.claude/agents/`](.claude/agents/), [`.claude/hooks/`](.claude/hooks/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver; a hook that blocks hand merges |
-| [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
+| [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus [vetted, pinned skills](.claude/skills/README.md) (to-spec, to-tickets, tdd, deslop, ...) |
 | [`reference/binley/`](reference/binley/) | The idea validation, now closed: pilot report, bootstrap prompt, how to run it on Windows |
 | [`reference/`](reference/) | Build plan, [feature comparison](reference/feature-comparison.md) against other systems, [competitor list](reference/competitors.md), the vision architecture, planned integrations |
-| [`config/`](config/), [`scripts/`](scripts/) | Project registry (`projects.yaml`, local and gitignored; `projects.example.yaml` shows its shape) and its onboarding script |
+| [`config/`](config/) | Examples: the project registry's shape, the README template, and `self.example/`, this repo's own factory config |
+| [`scripts/`](scripts/) | Registry wizard, multi-project dashboard, `test.sh` |
+| [`docs/`](docs/) | README images and archived READMEs |
+| [`AGENTS.md`](AGENTS.md), [`CONTEXT.md`](CONTEXT.md) | Rules for changing this repo; what the product is and its hard rules |
 
 ## Project registry
 
@@ -185,9 +190,9 @@ pip install -r requirements.txt
 python scripts/factory-onboard.py --interactive
 ```
 
-The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find the boards of per-repo installs.
+The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). Neither way of running the factory reads this registry (the central factory lists `$FACTORY_HOME/projects/`); only `scripts/factory-dashboard.py` does, to find the boards of per-repo installs.
 
-The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
+`factory onboard` replaces this wizard for the central factory. The registry stays in use for per-repo installs on the multi-project dashboard.
 
 ## Target architecture
 
@@ -208,7 +213,7 @@ flowchart LR
     class G1,G2,G3 gate
 ```
 
-8 stages, 3 council gates, 1 weekly Kaizen review, 5 security boundaries.
+8 stages, 3 council gates, 1 weekly Kaizen review, 5 security boundaries. This is the longer-term vision; where it differs from the [build plan](reference/build-plan.md) (for example on the [Dev council](reference/build-plan.md#f1--dev-council-in-shadow)'s seats), the build plan wins.
 
 | Document | What it covers |
 |---|---|
@@ -266,10 +271,10 @@ The target is to enforce these by the platform (branch protection, token scopes,
 
 ```mermaid
 flowchart LR
-    L1["L1<br/>Build to PR<br/>you review every PR"] -- "Step 3" --> L2["L2<br/>Build, checks<br/>and verifiers"]
-    L2 -- "Step 5" --> L3["L3<br/>Low-risk merge<br/>and deploy"]
-    L3 -- "Step 6" --> L4["L4<br/>Intake to deploy<br/>you set policy"]
-    NOW(["We are here:<br/>Step 1"]) -.-> L1
+    L1["L1<br/>Build to PR<br/>you review every PR"] --> L2["L2<br/>Build, checks<br/>and verifiers"]
+    L2 --> L3["L3<br/>Low-risk merge<br/>and deploy"]
+    L3 --> L4["L4<br/>Intake to deploy<br/>you set policy"]
+    NOW(["We are here:<br/>no level earned yet"]) -.-> L1
 
     classDef now fill:#fff3cd,stroke:#d39e00,color:#000
     class NOW now
@@ -304,7 +309,7 @@ This is the supported test entry point and is also used by CI. It runs Python sc
 
 ## Contributing
 
-1. Read the [reference architecture](reference/software-factory-reference-architecture.md) and the [build plan](reference/build-plan.md)
+1. Read [`AGENTS.md`](AGENTS.md), the [reference architecture](reference/software-factory-reference-architecture.md) and the [build plan](reference/build-plan.md)
 2. Open an issue to discuss your proposed change
 3. Submit a PR
 
