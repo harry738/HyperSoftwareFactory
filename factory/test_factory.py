@@ -357,6 +357,12 @@ def test_posted_text_is_scrubbed():
         del os.environ["GH_TOKEN"]
     assert out == "[secret] [secret] ./a.ts @\u200bteam", out
     assert job.publishable({}, "x" * 20, 5) == "[cut]\nxxxxx"
+    wt = {"worktree": "E:/work/001-x"}
+    for printed in ["/e/work/001-x/a.ts", "e:/Work/001-x/a.ts", "E:\\\\work\\\\001-x/a.ts", "/mnt/e/work/001-x/a.ts"]:
+        assert job.publishable(wt, printed, 500) == "./a.ts", (printed, job.publishable(wt, printed, 500))
+    assert job.publishable({}, "D:\\Users\\someone\\x /home/other/y", 500) == "D:\\Users\\[user]\\x /home/[user]/y"
+    assert job.publishable({}, "a\x00b\x1bc\td", 500) == "abc\td"
+    assert job.fenced("~~~~~\nout").startswith("~~~~~~\n")
 
 
 def test_no_hand_merge_hook():
