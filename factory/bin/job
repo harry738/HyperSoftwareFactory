@@ -538,6 +538,8 @@ def advance(job, stage):
 
     elif old == "spec":
         require((d / "spec.md").exists(), "spec.md doesn't exist")
+        require(not first_line(d / "spec.md").startswith("STATUS:"),
+                f"spec.md starts with {first_line(d / 'spec.md')!r}: the spec writer stopped, so go to a person")
         next_round(job)
 
     elif old == "build" and stage == "gate":
