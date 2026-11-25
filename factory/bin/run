@@ -117,8 +117,9 @@ def spent_today():
                          for r in map(json.loads, f.read_text().splitlines()) if r.get("day") == today()), 2)
 
 
-class DailyBudget(Exception):
-    """Today's spend reached daily_budget_usd: end the run and leave every job where it is."""
+class Halt(Exception):
+    """End the run and leave every job where it is: today's spend reached daily_budget_usd,
+    or CI is not running on GitHub, so nothing else may merge."""
 
 
 # ---- Headless agents --------------------------------------------------------
@@ -179,7 +180,7 @@ def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None
     if budget and spent >= budget:
         return stop(j, f"The job has spent ${spent:.2f} of its ${budget:.2f} budget, before the {agent} stage.")
     if DAILY_BUDGET is not None and spent_today() >= DAILY_BUDGET:
-        raise DailyBudget(f"The project has spent ${spent_today():.2f} of its ${DAILY_BUDGET:.2f} daily budget today, "
+        raise Halt(f"The project has spent ${spent_today():.2f} of its ${DAILY_BUDGET:.2f} daily budget today, "
                           f"before {j['id']}'s {agent} stage. Every job waits for tomorrow's run.")
     definition = agent_definition(agent)
     definition["model"] = model or definition["model"]
@@ -363,6 +364,8 @@ def step(j):
     if stage == "merging":
         ok, out = job("merge", j["id"])
         print(out, flush=True)
+        if "CI never started" in out:  # the account, not the change: nothing else merges until it's fixed
+            raise Halt("CI is not running on GitHub, so this run stops here. No other job merges until it does.")
         return ok
     return say(j, f"nothing to do in stage {stage}")
 
@@ -418,7 +421,7 @@ def main(argv):
         try:
             if not process(job_id):
                 failed.add(int(issue))
-        except DailyBudget as e:
+        except Halt as e:
             print(e, flush=True)
             break
     if touched:

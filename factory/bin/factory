@@ -80,6 +80,8 @@ def readiness(repo, conf):
     template = (TEMPLATES / "checks.sh").read_text() == (conf / "checks.sh").read_text()
     rows = [
         (works([*GH, "api", "user"]), "GitHub CLI signed in", "set GH_TOKEN to the project's fine-grained token"),
+        (works([*GH, "api", "repos/{owner}/{repo}/actions/runs?per_page=1"]), "token can read CI runs",
+         "give the token Actions: read and write, so CI that never started is seen and re-run"),
         (bool(shutil.which(CLAUDE[0])), "Claude Code installed", "install it and sign in (claude setup-token for a container)"),
         (not template, "checks.sh written", f"put the project's fast checks in {conf / 'checks.sh'}; the gate fails until you do"),
         ((conf / "setup.sh").exists(), "setup.sh (optional)", "add one to install packages once per worktree"),
