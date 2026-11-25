@@ -460,6 +460,10 @@ def check_reviews_done(job):
     rd = round_dir(job)
     missing = [r for r in reviewers(job) if not (rd / f"review-{r}.md").exists()]
     require(not missing, f"round {job['round']} is missing reviews from: {', '.join(missing)}")
+    # `run` stamps each review with the commit it read. A review from the in-session skill has no stamp.
+    stamps = {r: header(rd / f"review-{r}.md").get("COMMIT") for r in reviewers(job)}
+    stale = [r for r, c in stamps.items() if c and c != git(job, "rev-parse", "HEAD").stdout.strip()]
+    require(not stale, f"review-{stale[0]}.md was written for another commit" if stale else "")
     blocked = "BLOCKED" in job["reviews"].values()  # a blocked job goes to a human anyway
     thin = [] if blocked else [r for r, v in job["reviews"].items() if v == "no-evidence"]
     require(not thin, f"review-{thin[0]}.md has no `## Evidence` section citing a path:line; "
