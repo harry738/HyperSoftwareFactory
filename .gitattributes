@@ -1,3 +1,4 @@
 factory/** text eol=lf
 *.sh text eol=lf
 .claude/agents/*.md text eol=lf
+deploy/** text eol=lf

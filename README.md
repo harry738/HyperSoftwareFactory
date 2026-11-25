@@ -144,7 +144,7 @@ The [build plan](reference/build-plan.md) sets how it gets there: a central fact
 | E3 | Always-stop rules and the path-based risk floor in scripts; a council slot in the state machine; a gate that runs with the build cache off | In code and tested with stand-ins |
 | E4 | Read-only reviewers, a branch-unchanged check, evidence on the PR, follow-up issues | Read-only reviewers and the branch-unchanged check are in code and tested with stand-ins; the rest is open |
 | E5 | Concurrency, a daily budget, a scheduled run | Daily budget in code and tested with stand-ins; the rest not started |
-| E6 | Network allowlist, the container, and removal of the old per-repo path | Not started |
+| E6 | Network allowlist, the container, and removal of the old per-repo path | Network allowlist and container built and tested with stand-ins; removing the old path and the web console are open |
 
 Then the features, in order:
 
