@@ -16,6 +16,7 @@ Usage:
   job stop <job>                 a limit was hit: any running stage → needs-human, with the reason (stdin)
   job retry <job>                put a stopped job back in the stage it stopped in, with a fresh budget
   job pr-feedback <job>          start the next round from a `/factory` PR comment, a changes-requested review or failed CI
+  job merge-main <job>           a PR that conflicts with the base: start a round that merges it
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
   job sync <job>                 refresh reviews, gate and cost from the job's files
   job serve <job>                start the review dev server if it isn't running (when resuming a review)
@@ -731,6 +732,7 @@ def advance(job, stage):
             require(not stops, f"an always-stop rule applies ({'; '.join(stops)}): go to needs-human")
             require(line == "APPROVE", f"decision.md starts with {line!r}, not APPROVE")
             require(unattended, "unattended_merge is off in config.json: go to needs-human")
+            require(not job.get("held"), "the job was waiting for a person before it merged the base: go to needs-human")
         elif stops:
             if not decided_this_round(job):  # no approver was asked: the rule is the decision
                 escalate(job, "An always-stop rule applies, so this needs you whatever the reviews say:\n\n"
@@ -1049,6 +1051,8 @@ def cmd_feedback(job, text, who=None, keep_budget=False):
     job = advance(sync(job), "build")
     if keep_budget:  # not a person's feedback, so no fresh round budget
         job["round_limit"] = limit
+    else:  # a person has spoken: their earlier hold is answered
+        job.pop("held", None)
     save(job)
     print(f"{job['id']}: feedback-{k}.md, round {job['round']}")
 
@@ -1115,6 +1119,43 @@ def cmd_pr_feedback(job):
     print(f"{job['id']}: nothing")
 
 
+def cmd_merge_main(job, tries=3, pause=5):
+    """E5.4 and E5.5: a PR that conflicts with the base goes back to the builder to merge it, whether the
+    job waits for a person or its reviews are still running. Once per pushed commit, inside the round
+    budget. Prints `nothing` otherwise."""
+    # A job a limit or a safety check stopped (`stopped_in`) is left for a person to look at.
+    if job["stage"] not in {"review", "needs-human"} or not job["pr"] or job.get("stopped_in"):
+        return print(f"{job['id']}: nothing")
+    for attempt in range(tries):
+        pr = gh_json("pr", "view", str(job["pr"]), "--json", "state,mergeable,headRefOid")
+        if pr.get("mergeable") != "UNKNOWN":  # GitHub works it out in the background after the base moves
+            break
+        if attempt < tries - 1:
+            time.sleep(pause)
+    head = pr.get("headRefOid")
+    if (pr.get("state") != "OPEN" or pr.get("mergeable") != "CONFLICTING"
+            or job.get("conflict_sha") == head or job["round"] >= job["round_limit"]):
+        return print(f"{job['id']}: nothing")
+    git(job, "fetch", "origin", BASE)  # the builder merges origin/<base> and has no token to fetch it with
+    d = job_dir(job["id"])
+    k = len(list(d.glob("feedback-*.md"))) + 1
+    (d / f"feedback-{k}.md").write_text(
+        f"# Feedback {k}\n\nFrom the factory: the pull request conflicts with {BASE}.\n\nRun `git merge origin/{BASE}`, "
+        f"resolve the conflicts keeping both sides' intent, and commit the merge. Change nothing else.\n")
+    job["conflict_sha"] = head
+    if job["stage"] == "needs-human":
+        limit = job["round_limit"]
+        job = advance(sync(job), "build")
+        job["round_limit"] = limit  # not a person's feedback, so no fresh round budget
+        job["held"] = True  # it was waiting for a person, so it still waits for one: never merged unattended
+    else:  # in review: the reviews would be of a branch that cannot merge, so they are dropped
+        proc.stop_port(port(job, 1))
+        next_round(job)
+        job["stage"] = "build"
+    save(job)
+    print(f"{job['id']}: merge-main round {job['round']}: PR #{job['pr']} conflicts with {BASE}")
+
+
 def cmd_reject(job, text):
     if job["stage"] not in WAITING:
         die(f"{job['id']} is in {job['stage']}, not needs-info or needs-human")
@@ -1176,6 +1217,8 @@ def main(argv):
             cmd_stop(sync(resolve(args[0])), sys.stdin.read())
         elif cmd == "retry" and len(args) == 1:
             cmd_retry(resolve(args[0]))
+        elif cmd == "merge-main" and len(args) == 1:
+            cmd_merge_main(resolve(args[0]))
         elif cmd == "pr-feedback" and len(args) == 1:
             cmd_pr_feedback(resolve(args[0]))
         elif cmd == "agents" and len(args) == 2:

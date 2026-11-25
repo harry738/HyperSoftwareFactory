@@ -69,6 +69,7 @@ elif a[:2] == ["pr", "create"]:
 elif a[:2] == ["pr", "view"]:
     p = pr()
     out({"isDraft": p["isDraft"], "state": p["state"], "comments": p["comments"], "reviews": p.get("reviews", []),
+         "mergeable": os.environ.get("FAKE_MERGEABLE") or p.get("mergeable", "MERGEABLE"),
          "headRefOid": p.get("headRefOid", "sha0")})
 elif a[:2] == ["pr", "checks"]:
     if os.environ.get("FAKE_CHECKS"):  # they stay on the PR until a re-run, as on GitHub
@@ -154,7 +155,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "", "FAKE_CHECKS": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "", "FAKE_CHECKS": "", "FAKE_MERGEABLE": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -220,7 +221,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 16)]
+               "state": "OPEN", "comments": []} for n in range(1, 17)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -512,6 +513,32 @@ def test_an_unattended_merge_stops_the_run_when_ci_never_starts():
     finally:
         config(unattended_merge=False)
     assert res.returncode == 0 and job(14)["stage"] == "merged", res.stdout + res.stderr
+
+
+def test_a_waiting_pr_that_conflicts_gets_one_merge_main_round():
+    pr = job(6)["pr"]
+    before = job(6)["round"]
+    conflict = lambda value: gh_state(lambda s: next(p for p in s["prs"] if p["number"] == pr).update(mergeable=value))
+    conflict("CONFLICTING")
+    res = factory("run", "demo")
+    assert res.returncode == 0 and "merge-main round" in res.stdout, res.stdout + res.stderr
+    j = job(6)
+    assert j["round"] == before + 1 and j["stage"] == "needs-human" and j["round_limit"] == 3, j  # the budget is not renewed
+    assert j["held"], "a job that was waiting for a person still waits after merging the base"
+    assert "git merge origin/main" in sorted(folder(6).glob("feedback-*.md"))[-1].read_text()
+    res = factory("run", "demo")
+    assert res.returncode == 0 and job(6)["round"] == before + 1, "the same commit must not start another round"
+    conflict("MERGEABLE")
+
+
+def test_a_conflict_during_review_goes_back_to_the_builder_before_reviewers_run():
+    label(16)
+    res = factory("run", "demo", FAKE_MERGEABLE="CONFLICTING")
+    assert res.returncode == 0, res.stdout + res.stderr
+    j = job(15)  # job ids follow creation order, and issue 15 never became a job
+    assert j["stage"] == "needs-human" and j["round"] == 2, j
+    ran = stages_run(16)
+    assert ran[2:5] == ["builder", "builder", "reviewer-code"], ran  # round 1's reviewers were never started
 
 
 def test_status_lists_every_job():
