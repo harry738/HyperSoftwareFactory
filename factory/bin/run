@@ -259,7 +259,20 @@ def build(j):
                      "Fix that, commit, and update build.md.", resume=last_session(j, "builder")) and advance(j, "gate")
 
 
+def merge_main(j):
+    """True when the PR conflicted with the base and the job went back to the builder to merge it."""
+    ok, out = job("merge-main", j["id"])
+    if ok and "merge-main round" in out:
+        print(out, flush=True)
+        return True
+    if not ok:
+        say(j, out)
+    return False
+
+
 def review(j):
+    if merge_main(j):  # don't pay for reviews of a branch that cannot merge
+        return True
     n = j["round"]
     rd = JOBS / j["id"] / f"round-{n}"
     job("serve", j["id"])  # starts the shared review dev server again if it died
@@ -302,6 +315,8 @@ def review(j):
         if heads != {commit} or dirty:  # a reviewer edited what it was reviewing: its verdict is for another state
             return stop(j, f"The branch or working tree changed during review round {n}. Reviewers read commit "
                            f"{commit}; the branch is now at {', '.join(sorted(heads))}. Uncommitted changes: {dirty or 'none'}.")
+        if merge_main(j):  # the base moved while they read
+            return True
         job("sync", j["id"])
         verdicts = set(load(j["id"])["reviews"].values())
         target = "needs-human" if "BLOCKED" in verdicts else "build" if "CHANGES" in verdicts else "approve"
@@ -391,16 +406,23 @@ def queue(only):
     return [r for r in rows if only in {None, int(r[1])}]
 
 
+def waiting(only):
+    """A waiting job's PR may carry its next round: it conflicts with the base, or it has a `/factory`
+    comment, a changes-requested review or failed CI."""
+    for row in queue(only):
+        if row[0] == "wait" and row[3] == "needs-human":
+            for command in ("merge-main", "pr-feedback"):
+                out = job(command, row[2])[1]
+                if not out.endswith("nothing"):
+                    print(out, flush=True)
+                    break
+
+
 def main(argv):
     only = int(argv[0]) if argv else None
     res = script("frontier")
     print((res.stdout + res.stderr).strip(), flush=True)
-    # A waiting job's PR may carry its next round: a `/factory` comment, a changes-requested review, or failed CI.
-    for row in queue(only):
-        if row[0] == "wait" and row[3] == "needs-human":
-            out = job("pr-feedback", row[2])[1]
-            if not out.endswith("nothing"):
-                print(out, flush=True)
+    waiting(only)
     failed, touched = set(), []
     while True:
         todo = [r for r in queue(only) if r[0] in {"new", "resume"} and int(r[1]) not in failed]
@@ -421,6 +443,8 @@ def main(argv):
         try:
             if not process(job_id):
                 failed.add(int(issue))
+            if load(job_id)["stage"] == "merged":  # the base moved: other open PRs may conflict now
+                waiting(only)
         except Halt as e:
             print(e, flush=True)
             break
