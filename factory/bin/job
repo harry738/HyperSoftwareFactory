@@ -732,6 +732,7 @@ def advance(job, stage):
             require(not stops, f"an always-stop rule applies ({'; '.join(stops)}): go to needs-human")
             require(line == "APPROVE", f"decision.md starts with {line!r}, not APPROVE")
             require(unattended, "unattended_merge is off in config.json: go to needs-human")
+            require(not job.get("held"), "the job was waiting for a person before it merged the base: go to needs-human")
         elif stops:
             if not decided_this_round(job):  # no approver was asked: the rule is the decision
                 escalate(job, "An always-stop rule applies, so this needs you whatever the reviews say:\n\n"
@@ -1050,6 +1051,8 @@ def cmd_feedback(job, text, who=None, keep_budget=False):
     job = advance(sync(job), "build")
     if keep_budget:  # not a person's feedback, so no fresh round budget
         job["round_limit"] = limit
+    else:  # a person has spoken: their earlier hold is answered
+        job.pop("held", None)
     save(job)
     print(f"{job['id']}: feedback-{k}.md, round {job['round']}")
 
@@ -1120,8 +1123,8 @@ def cmd_merge_main(job, tries=3, pause=5):
     """E5.4 and E5.5: a PR that conflicts with the base goes back to the builder to merge it, whether the
     job waits for a person or its reviews are still running. Once per pushed commit, inside the round
     budget. Prints `nothing` otherwise."""
-    stopped_early = job.get("stopped_in") in {"intake", "spec"}
-    if job["stage"] not in {"review", "needs-human"} or not job["pr"] or stopped_early:
+    # A job a limit or a safety check stopped (`stopped_in`) is left for a person to look at.
+    if job["stage"] not in {"review", "needs-human"} or not job["pr"] or job.get("stopped_in"):
         return print(f"{job['id']}: nothing")
     for attempt in range(tries):
         pr = gh_json("pr", "view", str(job["pr"]), "--json", "state,mergeable,headRefOid")
@@ -1142,9 +1145,9 @@ def cmd_merge_main(job, tries=3, pause=5):
     job["conflict_sha"] = head
     if job["stage"] == "needs-human":
         limit = job["round_limit"]
-        job.pop("stopped_in", None)
         job = advance(sync(job), "build")
         job["round_limit"] = limit  # not a person's feedback, so no fresh round budget
+        job["held"] = True  # it was waiting for a person, so it still waits for one: never merged unattended
     else:  # in review: the reviews would be of a branch that cannot merge, so they are dropped
         proc.stop_port(port(job, 1))
         next_round(job)

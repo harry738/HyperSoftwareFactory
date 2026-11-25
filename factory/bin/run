@@ -370,7 +370,7 @@ def step(j):
             return advance(j, "needs-human")
         if not run_agent(j, "approver", f"PR: #{j['pr']}. Final round: {j['round']}."):
             return False
-        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True):
+        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True) and not j.get("held"):
             stage = "merging"
         else:  # ESCALATE, or approved with unattended merge off: a person merges
             return advance(j, "needs-human")
@@ -407,15 +407,17 @@ def queue(only):
 
 
 def waiting(only):
-    """A waiting job's PR may carry its next round: it conflicts with the base, or it has a `/factory`
-    comment, a changes-requested review or failed CI."""
+    """A waiting job's PR may carry its next round: a `/factory` comment, a changes-requested review or
+    failed CI, or it conflicts with the base. What a person said goes first: a round started after it
+    would move the job past it."""
     for row in queue(only):
         if row[0] == "wait" and row[3] == "needs-human":
-            for command in ("merge-main", "pr-feedback"):
-                out = job(command, row[2])[1]
+            for command in ("pr-feedback", "merge-main"):
+                ok, out = job(command, row[2])
                 if not out.endswith("nothing"):
                     print(out, flush=True)
-                    break
+                if load(row[2])["stage"] != "needs-human":
+                    break  # a round started
 
 
 def main(argv):

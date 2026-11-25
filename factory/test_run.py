@@ -524,6 +524,7 @@ def test_a_waiting_pr_that_conflicts_gets_one_merge_main_round():
     assert res.returncode == 0 and "merge-main round" in res.stdout, res.stdout + res.stderr
     j = job(6)
     assert j["round"] == before + 1 and j["stage"] == "needs-human" and j["round_limit"] == 3, j  # the budget is not renewed
+    assert j["held"], "a job that was waiting for a person still waits after merging the base"
     assert "git merge origin/main" in sorted(folder(6).glob("feedback-*.md"))[-1].read_text()
     res = factory("run", "demo")
     assert res.returncode == 0 and job(6)["round"] == before + 1, "the same commit must not start another round"
@@ -534,7 +535,7 @@ def test_a_conflict_during_review_goes_back_to_the_builder_before_reviewers_run(
     label(16)
     res = factory("run", "demo", FAKE_MERGEABLE="CONFLICTING")
     assert res.returncode == 0, res.stdout + res.stderr
-    j = job(16)
+    j = job(15)  # job ids follow creation order, and issue 15 never became a job
     assert j["stage"] == "needs-human" and j["round"] == 2, j
     ran = stages_run(16)
     assert ran[2:5] == ["builder", "builder", "reviewer-code"], ran  # round 1's reviewers were never started
