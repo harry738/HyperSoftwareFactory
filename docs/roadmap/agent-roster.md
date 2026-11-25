@@ -1,8 +1,10 @@
 # Agent roster (proposal)
 
-Local only. Not pushed. Roles are for a multi-agent split of the deployable roadmap. They map onto agents and scripts that already exist in HyperSoftwareFactory where those exist. The operator remains the only merger and the only person who can approve Tier 3 plans, FullAuto, or going live.
+Proposal only. Roles are for a multi-agent split of the deployable roadmap. They map onto agents and scripts that already exist in HyperSoftwareFactory where those exist. The operator remains the only merger and the only person who can approve Tier 3 plans, FullAuto, or going live. Auto-merge and auto-deploy are not adopted.
 
 Least privilege is already a factory rule: the script owns GitHub; agent stages run without the GitHub token; reviewers are read-only; Hermes, when built, holds no GitHub token. A test or research helper must not gain merge or production credentials.
+
+**Hard rules, in addition to that.** **Never-self-merge:** the factory never merges its own work ([Gumloop, entry 13](../reference-library/13-gumloop-software-factory.md)); the author of a change does not approve it ([Itamar Friedman, entry 11](../reference-library/11-itamar-friedman-software-factory-engineer.md)). **Autonomy stays at L2 (workflow-orchestrated)** ([Agent Baseline, entry 14](../reference-library/14-agent-baseline-secure-software-factory.md)): the orchestrator script chooses the next step; agents never grant themselves access; L3 and L4 are out of scope. Every role sits inside four security boundaries (entry 14): **sandbox**, **network**, **supply chain**, and **identity/access**.
 
 ## Orchestrator (script, not a model)
 
@@ -105,6 +107,17 @@ This is Gemini's "platform" and IBM's "main agent stays on planning and orchestr
 | **Tools / access** | Runs **outside** the factory container (E6.1 allowlist is package registries, GitHub, model API only). **No** GitHub token. **No** login-scraping or stealth/evasion |
 | **The operator's approval** | Proposals are never auto-queued. He decides what becomes a factory job. Paid APIs wait for his yes. Prefer a local or LAN model for summarising untrusted sources; do not send drop-folder text to OpenRouter while `data_leaving_lan` is deny |
 
+## Curator (knowledge loop)
+
+| | |
+|---|---|
+| **Maps to** | **Not built.** Closest: planned **F3** learnings file and the operator's existing habit of merging docs PRs. Inspired by [Harrison Chase, entry 05](../reference-library/05-harrison-chase-knowledge-factory.md) |
+| **Owns** | The knowledge loop tied to F3: collect flags from other roles (gaps in skills, `AGENTS.md`, ADRs, or domain notes), open PRs that update those artefacts, and keep skill files from rotting or bloating. Does not implement product features |
+| **Inputs** | Gap flags from any role, the learnings file, current `AGENTS.md` / skill docs, review notes that mention missing context |
+| **Outputs** | PRs that update skills, `AGENTS.md`, or domain knowledge. Never a merge |
+| **Tools / access** | Least privilege: write only in documentation / skill paths in a job worktree. **No** GitHub token (the orchestrator opens the PR). **No** production credentials, **no** ability to change factory config or `checks.sh` |
+| **The operator's approval** | Required to merge every curator PR. The Curator must not approve its own work (never-self-merge). Other agents may flag gaps; only this role (or the operator) turns a flag into a knowledge PR |
+
 ## PM / product steer
 
 | | |
@@ -131,7 +144,7 @@ No role in this roster is allowed to force-push, use admin override, push direct
 
 ## Model / provider bindings
 
-Proposal only; see `docs/roadmap/llm-provider-integration.md`. Default for every model-using stage remains the Claude Code CLI harness and the short names already in `config.json` (`fable`, `sonnet`, `opus`, `haiku`) until the operator changes a binding. Local, LAN, and OpenRouter are first-class connections on the completion path (council, later optional roles). `data_leaving_lan` defaults to deny. Reviewer and security roles fail closed rather than falling over to a weaker model.
+Proposal only; see `docs/roadmap/llm-provider-integration.md`. Default for every model-using stage remains the Claude Code CLI harness and the short names already in `config.json` (`fable`, `sonnet`, `opus`, `haiku`) until the operator changes a binding. Local, LAN, and OpenRouter are first-class connections on the completion path (council, later optional roles). `data_leaving_lan` defaults to deny. Reviewer and security roles fail closed rather than falling over to a weaker model. Provider choice does not change the L2 autonomy cap or the four security boundaries.
 
 | Role | Model? | Default (today) | Notes |
 |---|---|---|---|
