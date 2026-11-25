@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/readme-banner.svg" width="100%" alt="HyperSoftwareFactory — Build with agents. Verify with evidence." />
+<p align="center"><img src="docs/assets/banner-retro-teal-hyper.png" width="100%" alt="HyperSoftwareFactory. Build with agents. Verify with evidence." /></p>
+
+<p align="center"><img src="docs/assets/banner-assembly-line-retro-sharp.png" width="100%" alt="Illustration of AI agents planning, coding, testing, reviewing and verifying changes before a policy-controlled merge." /></p>
+
+<p align="center"><sub>Illustrative factory floor. Merge decisions remain subject to project policy and operator approval.</sub></p>
 
 # HyperSoftwareFactory
 
