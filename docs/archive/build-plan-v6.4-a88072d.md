@@ -1,6 +1,8 @@
 # Software Factory — Build Plan
 
-**Version:** v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+> **Archived 25 Nov 2026.** Superseded: the one roadmap is [reference/build-plan.md](../../reference/build-plan.md) (v6.6). This snapshot of v6.4 is kept for history, and its status and priorities are not current.
+
+**Version:** v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](../../reference/feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -45,7 +47,7 @@ All state stays in the factory and GitHub, so a Hermes outage loses nothing.
 
 ## What Binley validated
 
-Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (about $2.50 a job in agent cost): ten merged, one rejected at intake. The factory merged one PR itself; a person merged the other nine, eight of them because the approver escalated under the project's always-stop rules. One job went through a CHANGES round, five ran the security reviewer, and none failed the gate. Only the first job has a written report ([pilot report](binley/pilot-report-2026-11-21.md)).
+Binley Building Society is a fictional demonstrator. The factory ran 11 jobs on it by 22 Nov 2026 (about $2.50 a job in agent cost): ten merged, one rejected at intake. The factory merged one PR itself; a person merged the other nine, eight of them because the approver escalated under the project's always-stop rules. One job went through a CHANGES round, five ran the security reviewer, and none failed the gate. Only the first job has a written report ([pilot report](../../reference/binley/pilot-report-2026-11-21.md)).
 
 A second overnight run on 23 Nov put 18 more jobs through for $90.15, at `concurrency` 1. A job took between 15 minutes and 1.5 hours, mostly waiting on agents. Learnings 8 to 13 come from it.
 
@@ -69,7 +71,7 @@ Binley has no production, no users and no deploy. Its numbers show the mechanism
 
 ## How others do it
 
-The [feature comparison](feature-comparison.md) covers six open-source and seven commercial systems.
+The [feature comparison](../../reference/feature-comparison.md) covers six open-source and seven commercial systems.
 
 - **Every system that runs unattended is central or hosted in CI.** Everything installed per repo is driven by a person. That is why the operating model changed.
 - **The control loop belongs in code.** The published orchestrator designs, and the largest public deployment, all keep the model inside a stage.
@@ -226,7 +228,7 @@ Hermes starts `factory run` on a schedule and tells the operator when a job need
 
 - A market watch per project, run by Hermes: competitor changelogs, release notes and blogs, GitHub, Hacker News and Reddit to begin with. Sources that need a login or paid access come later.
 - Hermes writes its output to a drop folder in a fixed format. The engine reads it and makes every GitHub call.
-- An active competitor list, kept as a tracked file in the project's repo. The factory is registered as one of its own projects; its list is [competitors.md](competitors.md).
+- An active competitor list, kept as a tracked file in the project's repo. The factory is registered as one of its own projects; its list is [competitors.md](../../reference/competitors.md).
 - Each week the engine opens one PR with the dated digest and any changes to the list, and files the ideas as proposal issues. A proposal is never queued automatically: the operator decides, and the Dev council may take over triage for a project once it has merge power there.
 - External text passes through a summariser with no tools before any agent that can act sees it.
 

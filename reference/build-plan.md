@@ -166,7 +166,7 @@ The [feature comparison](feature-comparison.md) covers six open-source and seven
 
 ## Engine track — retained work items
 
-The original three-week estimate is historical. R1/R2 govern priority; E1.6 remains the first milestone.
+The original three-week estimate is historical. R1/R2 govern priority. R1.2 comes first, then E1.6, the first real job.
 
 Already done in this repo: the per-worktree checks lock, a re-runnable `job advance`, the gate rejecting new and renamed-in protected files, reviewers with a browser on one shared dev server, the evidence rule for reviews, reviewers added by sensitive path, a waiting job lock, `job merge` waiting for required CI, and project-neutral agents.
 

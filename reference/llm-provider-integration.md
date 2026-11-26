@@ -232,11 +232,11 @@ Verified against OpenRouter docs on 25 November 2026. Paid. Do not configure a l
     "gpu-box": {
       "connection": "lan",
       "kind": "openai_compatible",
-      "base_url": "https://192.0.2.10:8000/v1",
+      "base_url": "https://gpu-box.lan.example:8000/v1",
       "api_style": "openai_chat",
       "auth": { "type": "bearer", "api_key_env": "FACTORY_LAN_LLM_TOKEN" },
       "health_path": "/models",
-      "allow_hosts": ["192.0.2.10"]
+      "allow_hosts": ["gpu-box.lan.example"]
     },
     "openrouter": {
       "connection": "openrouter",
