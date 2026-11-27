@@ -739,7 +739,7 @@ async function refreshDrawer(gen = drawerGen) {
     return `${head}<button class="file ${f === openPath ? 'on' : ''}" data-file="${esc(f)}">
       <span class="v ${t || ''}"></span>${name}</button>`
   }).join('') || '<div class="empty">No files yet.</div>'
-  if (focusedFile) [...$('d-files').querySelectorAll('[data-file]')].find((b) => b.dataset.file === focusedFile)?.focus()
+  if (focusedFile) ([...$('d-files').querySelectorAll('[data-file]')].find((b) => b.dataset.file === focusedFile) || $('d-files').closest('.drawer').querySelector('.close'))?.focus()
 
   const focusedDocLink = document.activeElement?.closest?.('#d-doc a')?.getAttribute('href')
   if (text !== openText) {
@@ -752,7 +752,9 @@ async function refreshDrawer(gen = drawerGen) {
 let opener = null
 
 function showDrawerError(err) {
+  const hadFocus = !!document.activeElement?.closest?.('#d-doc')
   $('d-doc').innerHTML = `<p class="note">${esc(err.message)}</p>`
+  if (hadFocus) $('d-doc').closest('.drawer').querySelector('.close').focus()
 }
 
 async function openDrawer(id) {
