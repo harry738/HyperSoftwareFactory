@@ -33,7 +33,7 @@ The user is the operator: the one person who sets policy and decides every job t
 9. Backpressure before forward pressure: checks, budgets and isolation land before anything that creates more work.
 10. This repo is public. Nothing in it names a real project, a private repo or a local path.
 
-The scripts enforce rules 1, 2 and 4 today. Rule 3 is a target and is not built.
+The six-release roadmap in the build plan governs delivery priority. Until a separately reviewed policy decision, rules 4 and 6 also bind FullAuto and council recommendations. The scripts enforce rules 1, 2 and 4 today. Rule 3 is a target and is not built.
 
 ## Not building
 

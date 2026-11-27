@@ -4,7 +4,7 @@ Local reference-library notes only. Not pushed. Read-only research on 25 Novembe
 
 **Method.** Public reads only. X posts came from the official X search API (`search_posts_all`, three queries, posts from 1 September 2026 onward, 72 results). Hacker News came from the official Algolia API (`hn.algolia.com/api/v1/search`). Reddit's public `.json` endpoints returned HTTP 403, so Reddit items were found via web search of public thread URLs and are cited as those threads. LinkedIn items are public posts/articles found via web search; no LinkedIn login was used. Feature claims were confirmed against official docs, GitHub repository metadata (API snapshot ~20:36 UK time on 25 November 2026), or the author's own published post. Secondary write-ups are labelled as such and are not treated as independent measurement.
 
-**Factory baseline used for the gap analysis:** local `docs/roadmap/deployable-roadmap.md`, `docs/roadmap/feature-list-by-phase.md`, and `docs/roadmap/agent-roster.md`, against `main` @ `72a982c` / plan v6.4 as previously reviewed.
+**Factory baseline used for the gap analysis:** local `docs/archive/roadmap-proposals-2026-11-25/deployable-roadmap.md`, `docs/archive/roadmap-proposals-2026-11-25/feature-list-by-phase.md`, and `docs/archive/roadmap-proposals-2026-11-25/agent-roster.md`, against `main` @ `72a982c` / plan v6.4 as previously reviewed.
 
 `principles.md` is still deferred until the operator says the reference set is complete.
 
@@ -80,7 +80,7 @@ Star counts and push times are from the GitHub API on 25 November 2026, about 20
 
 ## 3. Gap analysis vs the local deployable plan
 
-The operator's bar: **direct match / incorporate first**, then partial components, then inspiration. Scores are impact (H/M/L) × effort (L/M/H) against `docs/roadmap/deployable-roadmap.md`, `docs/roadmap/feature-list-by-phase.md`, and `docs/roadmap/agent-roster.md`. These are proposals, not official IDs.
+The operator's bar: **direct match / incorporate first**, then partial components, then inspiration. Scores are impact (H/M/L) × effort (L/M/H) against `docs/archive/roadmap-proposals-2026-11-25/deployable-roadmap.md`, `docs/archive/roadmap-proposals-2026-11-25/feature-list-by-phase.md`, and `docs/archive/roadmap-proposals-2026-11-25/agent-roster.md`. These are proposals, not official IDs.
 
 ### Where HyperSoftwareFactory already leads or is at least level
 
