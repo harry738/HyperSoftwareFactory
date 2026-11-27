@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Software Factory</title>
+<title>HyperSoftwareFactory / Control room</title>
 <style>
   :root {
-    --bg: #14151b;
-    --panel: #1a1c24;
-    --card: #20222c;
-    --card-hover: #252835;
-    --line: #2b2e3b;
-    --text: #e4e5ea;
-    --muted: #868ba0;
-    --faint: #5b6075;
-    --active: #8be9fd;
-    --pass: #50fa7b;
-    --changes: #ffb86c;
-    --human: #ff5555;
-    --merged: #bd93f9;
+    --bg: #091b23;
+    --panel: #10262f;
+    --card: #18343d;
+    --card-hover: #204447;
+    --line: #3d7470;
+    --text: #e3eeef;
+    --muted: #a4bfc6;
+    --faint: #88a6ad;
+    --active: #7bb7e4;
+    --pass: #55e6bc;
+    --changes: #e8bc70;
+    --human: #f27e75;
+    --merged: #bdabed;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
@@ -36,7 +36,8 @@
     display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
     flex-wrap: wrap; padding: 28px 32px 8px;
   }
-  h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { margin: 0; font: 700 18px/1.4 var(--mono); letter-spacing: -0.025em; color: var(--pass); }
+  .brand-kicker { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; white-space: nowrap; }
   .status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .status .dot {
     display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -239,6 +240,21 @@
   }
   .md .summary ul { margin: 0 0 .6em; }
 
+  /* Pull requests (only under scripts/factory-dashboard.py) */
+  .prs { padding: 0 32px 32px; overflow-x: auto; }
+  .prs:empty { display: none; }
+  .prs h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  .prs table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .prs th, .prs td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+  .prs th { color: var(--muted); font-weight: 500; font-size: 11px; }
+  .prs td:not(.title) { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .prs a { color: var(--active); text-decoration: none; }
+  .prs .open, .prs .pass { color: var(--pass); }
+  .prs .merged { color: var(--merged); }
+  .prs .draft, .prs .none, .prs .closed { color: var(--muted); }
+  .prs .pending { color: var(--changes); }
+  .prs .fail { color: var(--human); }
+
   footer {
     padding: 0 32px 32px; font-family: var(--mono); font-size: 11px; color: var(--faint);
     display: flex; gap: 20px; flex-wrap: wrap;
@@ -252,6 +268,7 @@
     header { padding: 20px 16px 4px; }
     .banner { margin: 12px 16px 0; }
     .tabs { padding: 12px 16px 0; }
+    .prs { padding: 0 16px 24px; }
     .board { grid-template-columns: 1fr; padding: 16px 16px 32px; }
     footer { padding: 0 16px 24px; }
     .d-head { padding: 16px; }
@@ -269,16 +286,19 @@
 </head>
 <body>
 <header>
-  <h1>Software factory</h1>
+  <h1>HyperSoftwareFactory <span class="brand-kicker">/ CONTROL ROOM</span></h1>
   <div class="status" id="status">connecting…</div>
 </header>
 <nav class="tabs" id="tabs" aria-label="Projects"></nav>
 <div id="banner"></div>
 <main class="board" id="board"></main>
+<section class="prs" id="prs" aria-label="Pull requests"></section>
 <footer>
-  <span>/factory run</span>
-  <span>/factory run &lt;n&gt;</span>
-  <span>/factory &lt;anything&gt;</span>
+  <span id="commands" style="display: contents">
+    <span>/factory run</span>
+    <span>/factory run &lt;n&gt;</span>
+    <span>/factory &lt;anything&gt;</span>
+  </span>
   <span id="totals"></span>
 </footer>
 
@@ -395,6 +415,31 @@ function links(job) {
   return out.join('')
 }
 
+// A central project (`current.project`, set by the hub) is run from the factory's
+// command line; a per-repo install from the /factory skill.
+const SKILL_COMMANDS = document.getElementById('commands').innerHTML
+
+function footerCommands() {
+  const p = current.project
+  if (!p) return SKILL_COMMANDS
+  return [`factory run ${p}`, `factory run ${p} <issue>`, `factory status ${p}`]
+    .map((c) => `<span>${esc(c)}</span>`).join('')
+}
+
+function humanHint(job) {
+  const merge = job.pr ? `merge PR #${job.pr} to approve<br>` : ''
+  if (!current.project) return `${merge}or give feedback: /factory &lt;anything&gt;`
+  // As factory/bin/job: a job stopped before it was built takes no feedback.
+  const next = []
+  if (job.stopped_in) next.push(`stopped in ${esc(job.stopped_in)}: job retry ${esc(job.id)}`)
+  if (!['intake', 'spec'].includes(job.stopped_in)) {
+    next.push(job.pr
+      ? `or comment on the PR starting /factory, then factory run ${esc(current.project)}`
+      : `give feedback: job feedback ${esc(job.id)}`)
+  }
+  return merge + next.join('<br>')
+}
+
 function card(job, rounds) {
   const live = LIVE.has(job.stage)
   const human = job.stage === 'needs-human'
@@ -421,7 +466,7 @@ function card(job, rounds) {
       <div class="links">${links(job)}</div>
       ${rounds.length ? `<div class="rounds">${rounds.join('')}</div>` : ''}
       <div class="meta">${meta}</div>
-      ${human ? `<div class="hint">${job.pr ? `merge PR #${job.pr} to approve<br>` : ''}or give feedback: /factory &lt;anything&gt;</div>` : ''}
+      ${human ? `<div class="hint">${humanHint(job)}</div>` : ''}
     </article>`
 }
 
@@ -461,6 +506,7 @@ async function poll() {
     const all = await Promise.all(projects.map((p) => p.installed ? loadJobs(jobsDir(p)) : []))
     jobs = all[projects.indexOf(current)]
     renderTabs(all)
+    renderPrs() // not awaited: GitHub is slower than the board
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
@@ -499,9 +545,41 @@ function renderTabs(all) {
   }).join('')
 }
 
+// Open PRs first, then the rest, newest first.
+async function renderPrs() {
+  const p = current
+  let html = ''
+  if (p.repo) {
+    try {
+      const { prs, error } = JSON.parse(await fetchText(`${p.slug}/prs.json`))
+      if (error) html = `<div class="banner">pull requests: ${esc(error)}</div>`
+      else {
+        prs.sort((a, b) => (b.state === 'OPEN') - (a.state === 'OPEN') || b.updatedAt.localeCompare(a.updatedAt))
+        const rows = prs.map((pr) => {
+          const open = pr.state === 'OPEN'
+          const state = open && pr.isDraft ? 'draft' : pr.state.toLowerCase()
+          const review = (pr.reviewDecision || '').toLowerCase().replace(/_/g, ' ')
+          return `<tr><td>${link(pr.url, `#${Number(pr.number)}`)}</td><td class="title">${esc(pr.title)}</td>
+            <td class="${esc(state)}">${esc(state)}</td><td class="${esc(pr.checks)}">${esc(pr.checks)}</td>
+            <td>${esc(review)}</td><td class="fail">${open && pr.mergeable === 'CONFLICTING' ? 'conflicts' : ''}</td>
+            <td>${esc(pr.updatedAt.slice(0, 10))}</td></tr>`
+        }).join('')
+        const open = prs.filter((pr) => pr.state === 'OPEN').length
+        html = `<h2>Pull requests · ${open} open</h2>` + (rows
+          ? `<table><tr><th>PR</th><th>Title</th><th>State</th><th>Checks</th><th>Review</th><th></th><th>Updated</th></tr>${rows}</table>`
+          : '<div class="empty">No pull requests.</div>')
+      }
+    } catch (err) {
+      html = `<div class="banner">${esc(err.message)}</div>`
+    }
+  }
+  if (p === current && $('prs').innerHTML !== html) $('prs').innerHTML = html
+}
+
 function pickProject() {
   current = projects.find((p) => p.slug === decodeURIComponent(location.hash.slice(1)))
     || projects.find((p) => p.installed) || projects[0]
+  $('commands').innerHTML = footerCommands()
   document.title = current.name ? `${current.name} · Software Factory` : 'Software Factory'
 }
 

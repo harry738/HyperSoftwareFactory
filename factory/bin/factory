@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+"""The factory's command line.
+
+  factory onboard <owner/repo | git URL | path> [--name <project>]   register a project and clone it
+  factory run <project> [<issue>]                                    work the project's queue, or one issue
+  factory status [<project>]                                         jobs by stage, cost and time
+
+The factory home is $FACTORY_HOME (default ~/factory-home). It holds
+projects/<project>/ (config.json, checks.sh, an optional setup.sh) and
+work/<project>/ (the clone, worktrees and jobs). It names real projects, so keep
+it out of any public repo.
+"""
+
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+BIN = Path(__file__).resolve().parent
+TEMPLATES = BIN.parent  # config.json and checks.sh next to bin/ are the templates
+HOME = Path(os.environ.get("FACTORY_HOME") or Path.home() / "factory-home")
+GH = shlex.split(os.environ.get("FACTORY_GH", "gh"))
+CLAUDE = shlex.split(os.environ.get("FACTORY_CLAUDE", "claude"))
+
+
+def die(msg):
+    sys.exit(f"factory: {msg}")
+
+
+def projects():
+    # ponytail: the registry is the folder listing; each project's repo is recorded in its config.json
+    return sorted(p.name for p in (HOME / "projects").glob("*") if (p / "config.json").exists())
+
+
+def in_project(name, script, *args):
+    if name not in projects():
+        die(f"no project {name!r} in {HOME / 'projects'}; onboard it first")
+    env = {**os.environ, "FACTORY_HOME": str(HOME), "FACTORY_PROJECT": name}
+    return subprocess.call([sys.executable, str(BIN / script), *args], env=env)
+
+
+def onboard(source, name):
+    name = name or re.sub(r"[^a-z0-9]+", "-", Path(source.rstrip("/")).name.removesuffix(".git").lower()).strip("-")
+    conf, repo = HOME / "projects" / name, HOME / "work" / name / "repo"
+    if not repo.exists():
+        repo.parent.mkdir(parents=True, exist_ok=True)
+        by_git = "://" in source or source.startswith("git@") or Path(source).exists()
+        clone = ["git", "clone", "-q", source, str(repo)] if by_git else [*GH, "repo", "clone", source, str(repo)]
+        if subprocess.call(clone) != 0:
+            die(f"could not clone {source}")
+    conf.mkdir(parents=True, exist_ok=True)
+    if not (conf / "checks.sh").exists():
+        shutil.copyfile(TEMPLATES / "checks.sh", conf / "checks.sh")
+    if not (conf / "config.json").exists():
+        config = json.loads((TEMPLATES / "config.json").read_text())
+        head = subprocess.run(["git", "-C", str(repo), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        config["base_branch"] = head.removeprefix("origin/") or config["base_branch"]
+        (conf / "config.json").write_text(json.dumps({"repo": source, **config}, indent=2) + "\n")
+    print(f"Project {name}\n  config  {conf}\n  clone   {repo}\n")
+    readiness(repo, conf)
+
+
+def readiness(repo, conf):
+    """What the factory needs before the first job. A checklist, not a score."""
+    config = json.loads((conf / "config.json").read_text())
+
+    def works(cmd):
+        try:
+            return subprocess.run(cmd, cwd=repo, capture_output=True, text=True).returncode == 0
+        except OSError:
+            return False
+
+    package = json.loads((repo / "package.json").read_text()) if (repo / "package.json").exists() else {}
+    tests = "test" in package.get("scripts", {}) or any((repo / p).exists() for p in ("tests", "test", "pytest.ini", "go.mod", "Cargo.toml"))
+    template = (TEMPLATES / "checks.sh").read_text() == (conf / "checks.sh").read_text()
+    rows = [
+        (works([*GH, "api", "user"]), "GitHub CLI signed in", "set GH_TOKEN to the project's fine-grained token"),
+        (works([*GH, "api", "repos/{owner}/{repo}/actions/runs?per_page=1"]), "token can read CI runs",
+         "give the token Actions: read and write, so CI that never started is seen and re-run"),
+        (bool(shutil.which(CLAUDE[0])), "Claude Code installed", "install it and sign in (claude setup-token for a container)"),
+        (not template, "checks.sh written", f"put the project's fast checks in {conf / 'checks.sh'}; the gate fails until you do"),
+        ((conf / "setup.sh").exists(), "setup.sh (optional)", "add one to install packages once per worktree"),
+        (tests, "tests in the repo", "the gate is only as good as the project's own tests"),
+        (any((repo / ".github" / "workflows").glob("*.y*ml")), "CI workflow", "add one that runs the same checks, as a required check"),
+        (works([*GH, "api", f"repos/{{owner}}/{{repo}}/branches/{config['base_branch']}/protection"]),
+         f"branch protection on {config['base_branch']}", "require a PR and the CI check (or this token cannot see it)"),
+        (any((repo / f).exists() for f in ("AGENTS.md", "CLAUDE.md")), "AGENTS.md or CLAUDE.md", "the agents read the project's rules from it"),
+        ((repo / "CONTEXT.md").exists(), "CONTEXT.md", "what the product is and its hard rules; the Dev council reads it"),
+    ]
+    print("Readiness")
+    for ok, what, fix in rows:
+        print(f"  {'yes' if ok else 'NO '}  {what}" + ("" if ok else f": {fix}"))
+    print(f"\nAlso set protected_paths, sensitive_paths and dev_server in {conf / 'config.json'}.")
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[0] == "onboard" and (len(argv) == 2 or (len(argv) == 4 and argv[2] == "--name")):
+        onboard(argv[1], argv[3] if len(argv) == 4 else None)
+    elif argv[:1] == ["run"] and len(argv) in {2, 3} and (len(argv) == 2 or argv[2].isdigit()):
+        sys.exit(in_project(argv[1], "run", *argv[2:]))
+    elif argv[:1] == ["status"] and len(argv) <= 2:
+        for name in argv[1:] or projects():
+            print(f"== {name}", flush=True)
+            in_project(name, "job", "summary")
+    else:
+        die(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

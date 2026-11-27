@@ -69,6 +69,14 @@ The approver escalates to a human when one of these is a product decision.
 - Don't stop to ask. Intake already asked the author everything only they
   could answer. Make the remaining calls yourself and list them under
   Assumptions.
+- Stop only when no spec you could write would be buildable as one job. Then
+  `spec.md` is just a first line and the reason, and the factory hands the job
+  to a person:
+  - `STATUS: NEEDS-SPLIT` when the work is too big for one PR. Under
+    `## Why`, say why and list the separate issues it should become.
+  - `STATUS: BLOCKED` when something outside the repo is missing (an
+    environment, a credential, a decision from another team). Under `## Why`,
+    say what is missing and who can provide it.
 - Prefer the smallest change that fully meets the scope. Don't add options,
   fallbacks or "nice to have" extras.
 - Reuse what exists. If the repo already has a pattern for this (a component, a
@@ -78,7 +86,9 @@ The approver escalates to a human when one of these is a product decision.
 - `factory/checks.sh` runs the repo's tests, lint and build on every round, so
   don't restate it as a criterion. Ask for new tests where the repo has a test
   runner and the behaviour can be tested.
-- Never require a change to a file matching `protected_paths` in
-  `factory/config.json`: the gate fails any branch that modifies one.
+- Never require a change to, or a new file under, a path matching
+  `protected_paths` in the factory's `config.json` (the `Config:` path in your prompt, or `factory/config.json` in the main checkout): the gate fails any branch that
+  adds or modifies one. If the issue can't be met without it, say so under
+  Assumptions: the builder will stop there and the job goes to a human.
 
 When you're done, reply with one line: `SPEC: <short title>`.

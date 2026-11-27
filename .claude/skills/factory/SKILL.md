@@ -25,7 +25,7 @@ intake (fable)     → ACCEPT (scope possibly changed) | NEEDS-INFO | REJECT, po
 route (script)     → reviewers + models from risk/surfaces via config.json
 worktree           → factory/<job-id> from origin/<base>
 spec-writer (fable) → spec.md
-builder (opus)     → commits; the first push opens a draft PR "Closes #<n>"
+builder (opus)     → commits; `job advance <id> gate` pushes and opens a draft PR "Closes #<n>"
 gate (script)      → checks.sh; FAIL → builder gets the log, no reviewers spawned
 reviewers (routed) → parallel, WAIT FOR ALL; CHANGES → builder → gate → reviewers
 approver (fable)   → APPROVE: sync origin/<base>, gate, gh pr merge
@@ -128,7 +128,10 @@ gate's `round-<N-1>/checks.md`, the reviews in `round-<N-1>/`, or
   `The gate failed: read round-<N-1>/checks.md and checks.log, fix it, push, and update build.md.`
   No reviewer runs on a failing build.
 
-**review.** Spawn every reviewer in `job.json` `agents.reviewers` **in one
+**review.** `advance <id> review` may have added reviewers: when the branch changes a
+`sensitive_paths` file it adds the security reviewer and raises the code reviewer
+(`sensitive_reviewers` in `config.json`). Read the list from `job.json` after it.
+Spawn every reviewer in `job.json` `agents.reviewers` **in one
 message**, so they run in parallel: `subagent_type` `reviewer-<r>`, model from
 the same map, prompt `<header> Review round <N>.` plus the port for `ux` and
 `ui`. **WAIT FOR ALL.** Each time one finishes, run
@@ -136,8 +139,12 @@ the same map, prompt `<header> Review round <N>.` plus the port for `ux` and
 finished:
 
 - any BLOCKED (a reviewer couldn't open the page): `factory/bin/job advance <id> needs-human`.
+- `advance` refuses a review with no `## Evidence` citing a `path:line`: resume
+  that reviewer once with the refusal. If it refuses again, stop this job and tell the user.
 
-- all PASS: `factory/bin/job advance <id> approve`, then spawn `approver` with
+- all PASS: `factory/bin/job advance <id> approve`. If it prints `always-stop`, a
+  rule sends the job to a person: run `factory/bin/job advance <id> needs-human`
+  and spawn no approver. Otherwise spawn `approver` with
   `<header> PR: #<pr>. Final round: <N>.`
 - any CHANGES: `factory/bin/job advance <id> build` (or `needs-human` when it
   refuses because this was the last round), then resume the builder:
@@ -148,12 +155,17 @@ finished:
 - `APPROVE`: `factory/bin/job merge <id>`, run from the main checkout exactly
   like that, with no `cd` or `python` in front: that is the form the
   permission rules allow. It syncs the branch with the base, runs the gate again, pushes, and merges the PR, ending in `merged`. If any
-  of that fails it moves the job to `needs-human` and says why.
+  of that fails it moves the job to `needs-human` and says why. When
+  `unattended_merge` is off in `config.json` it refuses: run
+  `factory/bin/job advance <id> needs-human`, which marks the PR ready and
+  leaves the merge to a person.
 - `ESCALATE`: `factory/bin/job advance <id> needs-human`. It marks the PR ready,
   posts the decision on it and labels the issue `factory:needs-human`.
 
 A job is finished for this run when it reaches `merged`, `rejected`,
-`needs-info` or `needs-human`.
+`needs-info` or `needs-human`. With `council` set in `config.json` a job on its
+way to `needs-human` stops in `council` first: run
+`factory/bin/job advance <id> needs-human` again to pass it through.
 
 A person can merge a job's PR by hand at any stage. `factory/bin/job queue`
 then moves the job to `merged`; stop any agents still running for it.

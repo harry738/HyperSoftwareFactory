@@ -1,0 +1,459 @@
+#!/usr/bin/env python
+"""Work the queue: every labelled issue goes through the pipeline, one headless
+Claude Code run per stage.
+
+Usage: run [<issue>]        normally: factory run <project> [<issue>]
+
+This script is the loop. No model decides what happens next: each step reads
+the job's files and calls factory/bin/job, which refuses illegal moves. All
+state is on disk, so stopping this script and starting it again loses nothing:
+a job picks up at the stage it was in.
+
+Agents are loaded from the engine's .claude/agents/, not from the project, and
+run without the GitHub token: the factory does every push and GitHub call.
+
+Every stage has limits, set in config.json: a wall-clock timeout, a stall limit
+(no output for that long), a turn cap and a cost cap. A job also has a budget
+across all its stages. Hitting any of them hands the job to a person
+(`job stop`); `job retry` puts it back. A stage that fails for a passing reason,
+such as a rate limit, is tried again after a wait.
+
+A project can also have a daily budget (`daily_budget_usd`, UTC days). Once
+today's spend across all its jobs reaches it, the run ends before the next stage
+and every job stays where it is, for the next run to pick up.
+"""
+
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+
+import proc
+
+proc.setup()
+
+BIN = Path(__file__).resolve().parent
+AGENTS = BIN.parents[1] / ".claude" / "agents"
+LAYOUT = proc.layout(__file__)
+REPO, JOBS = LAYOUT["repo"], LAYOUT["jobs"]
+CONFIG = json.loads(LAYOUT["config"].read_text())
+CLAUDE = shlex.split(os.environ.get("FACTORY_CLAUDE", "claude"))  # tests point this at a stand-in
+TIMEOUT = CONFIG.get("stage_timeout_minutes", 60) * 60
+STALL = CONFIG.get("stage_stall_minutes", 20) * 60  # longer than the slowest single command an agent runs
+MAX_TURNS = CONFIG.get("stage_max_turns", 300)
+STAGE_BUDGET = CONFIG.get("stage_budget_usd", 5)
+RETRY_WAITS = CONFIG.get("retry_waits_seconds", [30, 120, 480])
+TRANSIENT = re.compile(r"rate.?limit|overloaded|\b(429|500|502|503|529)\b|ECONNRESET|ETIMEDOUT|temporarily unavailable", re.I)
+DAILY_BUDGET = CONFIG.get("daily_budget_usd")  # None: no daily cap
+DONE = {"merged", "rejected", "needs-info", "needs-human"}
+TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
+# Reviewers run in parallel threads, and append mode on Windows is a seek and a write, not
+# one atomic append: two rows written at once can overwrite each other and break the file.
+USAGE_LOCK = threading.Lock()
+
+
+def script(name, *args, stdin=None):
+    return subprocess.run([sys.executable, str(BIN / name), *args], input=stdin, capture_output=True, text=True)
+
+
+def job(*args, stdin=None):
+    """Run factory/bin/job. Returns (ok, its output)."""
+    res = script("job", *args, stdin=stdin)
+    return res.returncode == 0, (res.stdout + res.stderr).strip()
+
+
+def load(job_id):
+    return json.loads((JOBS / job_id / "job.json").read_text())
+
+
+def first_line(path):
+    return path.read_text().split("\n", 1)[0].strip() if path.exists() else None
+
+
+def say(j, text):
+    print(f"{j['id']} #{j['issue']}: {text}", flush=True)
+    return False
+
+
+def advance(j, stage, quiet=False):
+    ok, out = job("advance", j["id"], stage)
+    if ok or not quiet:
+        print(out, flush=True)
+    return ok
+
+
+def stop(j, why):
+    """A limit was hit: hand the job to a person, from whatever stage it is in."""
+    print(job("stop", j["id"], stdin=why)[1], flush=True)
+    return False
+
+
+def port(j, offset):
+    return CONFIG["ports"]["base"] + offset + CONFIG["ports"]["step"] * int(j["id"][:3])
+
+
+def usage(j):
+    path = JOBS / j["id"] / "usage.jsonl"
+    with USAGE_LOCK:  # not while another reviewer's thread is half-way through its row
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def spent_today():
+    """The project's spend today, across every job. Rows from before E5.2 have no day and don't count."""
+    with USAGE_LOCK:
+        return round(sum(r["cost_usd"] for f in JOBS.glob("*/usage.jsonl")
+                         for r in map(json.loads, f.read_text().splitlines()) if r.get("day") == today()), 2)
+
+
+class Halt(Exception):
+    """End the run and leave every job where it is: today's spend reached daily_budget_usd,
+    or CI is not running on GitHub, so nothing else may merge."""
+
+
+# ---- Headless agents --------------------------------------------------------
+
+
+def agent_definition(name):
+    """One agent from .claude/agents/<name>.md: its instructions, model and tools.
+    Hooks in the file are dropped: this script runs the gate itself."""
+    _, front, body = (AGENTS / f"{name}.md").read_text(encoding="utf-8").split("---\n", 2)
+    meta = dict(re.findall(r"^(tools|model): *(.+)$", front, re.M))
+    return {"prompt": body.strip(), "model": meta["model"], "tools": [t.strip() for t in meta["tools"].split(",")]}
+
+
+def last_session(j, agent):
+    sessions = [r["session"] for r in usage(j) if r["agent"] == agent and r["ok"] and r.get("session")]
+    return sessions[-1] if sessions else None
+
+
+def watch(cmd, cwd, env):
+    """Run one stage and read its event stream. Kills it when it runs past the stage
+    timeout or prints nothing for the stall limit. Returns (how it ended, its final
+    result event, its last lines of output)."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         encoding="utf-8", errors="replace", start_new_session=not proc.WINDOWS)
+    start = time.monotonic()
+    last, result, tail = [start], {}, []
+
+    def read():
+        for line in p.stdout:
+            last[0] = time.monotonic()
+            tail[:] = [*tail[-9:], line.strip()]
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "result":
+                result.update(event)
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    how = None
+    while p.poll() is None and not how:
+        time.sleep(0.5)
+        now = time.monotonic()
+        how = "timeout" if now - start > TIMEOUT else "stall" if now - last[0] > STALL else None
+    if how:
+        proc.kill_tree(p.pid)
+        p.wait()
+    reader.join(5)
+    return how or ("ok" if p.returncode == 0 and not result.get("is_error") else "failed"), result, tail
+
+
+def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None):
+    """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly.
+    `tools` narrows which tools exist, `allow` what they may do without asking; the rest is denied."""
+    d = JOBS / j["id"]
+    spent, budget = sum(r["cost_usd"] for r in usage(j)), j.get("budget_usd")
+    if budget and spent >= budget:
+        return stop(j, f"The job has spent ${spent:.2f} of its ${budget:.2f} budget, before the {agent} stage.")
+    if DAILY_BUDGET is not None and spent_today() >= DAILY_BUDGET:
+        raise Halt(f"The project has spent ${spent_today():.2f} of its ${DAILY_BUDGET:.2f} daily budget today, "
+                          f"before {j['id']}'s {agent} stage. Every job waits for tomorrow's run.")
+    definition = agent_definition(agent)
+    definition["model"] = model or definition["model"]
+    worktree = Path(j["worktree"])
+    checks = f"{Path(sys.executable).as_posix()} {(BIN / 'gate').as_posix()} --checks"
+    header = (f"Job: {j['id']}. Job folder: {d.as_posix()}/. Main checkout: {REPO.as_posix()}. "
+              f"Worktree: {j['worktree']}. Branch: {j['branch']}. Base: origin/{CONFIG['base_branch']}. "
+              f"Issue: #{j['issue']}. Config: {LAYOUT['config'].as_posix()}. Checks command: {checks}.")
+    # The agent's instructions go in by file, and it gets exactly its own tools: nothing else is
+    # available (--tools), and nothing needs a person to approve it (--allowedTools, dontAsk).
+    # Only the project's own settings load, never the operator's personal plugins and hooks. A narrowed
+    # agent loads none at all, and no MCP servers: the branch under review could otherwise add allow
+    # rules, hooks or servers to its own review.
+    instructions = d / f"agent-{agent}.md"
+    instructions.write_text(definition["prompt"], encoding="utf-8")
+    exe = shutil.which(CLAUDE[0]) or CLAUDE[0]
+    base = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
+            "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
+            "--output-format", "stream-json", "--verbose",
+            *(["--setting-sources=", "--strict-mcp-config"] if allow else ["--setting-sources", "project"]),
+            "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
+            "--permission-mode", "dontAsk", "--tools", *(tools or definition["tools"]),
+            "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
+    env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
+    for wait in [0, *RETRY_WAITS]:
+        time.sleep(wait)
+        start = time.monotonic()
+        how, result, tail = watch(base + (["--resume", resume] if resume else []),
+                                  worktree if worktree.exists() else REPO, env)
+        said = str(result.get("result") or " ".join(tail))[-300:].strip()
+        with USAGE_LOCK, (d / "usage.jsonl").open("a") as f:
+            f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": how == "ok",
+                                "how": how, "cost_usd": result.get("total_cost_usd") or 0,
+                                "session": result.get("session_id"), "seconds": int(time.monotonic() - start), "day": today()}) + "\n")
+        if how != "failed" or "max_" in str(result.get("subtype")) or not TRANSIENT.search(said):
+            break
+        say(j, f"{agent} failed for a passing reason ({said}); trying again")
+        resume = result.get("session_id") or resume
+    if how == "ok":
+        return True
+    if how == "timeout":
+        return stop(j, f"The {agent} stage ran past its {TIMEOUT // 60}-minute limit and was stopped.")
+    if how == "stall":
+        return stop(j, f"The {agent} stage produced no output for {STALL // 60} minutes and was stopped.")
+    if "max_" in str(result.get("subtype")):  # the CLI's own turn or cost cap
+        return stop(j, f"The {agent} stage hit its limit ({result['subtype']}): {MAX_TURNS} turns or ${STAGE_BUDGET}.")
+    return say(j, f"{agent} failed: {said}")
+
+
+# ---- One step per stage -----------------------------------------------------
+
+
+def build(j):
+    d, n = JOBS / j["id"], j["round"]
+    message = f"Build round {n}. Port: {port(j, 0)}."
+    if n > 1:
+        prev = d / f"round-{n - 1}"
+        feedback = sorted(d.glob("feedback-*.md"))
+        newest = max((p.stat().st_mtime for p in prev.glob("*")), default=0)
+        if feedback and feedback[-1].stat().st_mtime > newest:
+            message += f" Feedback came in: read {feedback[-1].name} and address it, commit, and update build.md for round {n}."
+        elif first_line(prev / "checks.md") == "GATE: FAIL":
+            message += f" The gate failed: read round-{n - 1}/checks.md and checks.log, fix it, commit, and update build.md."
+        else:
+            message += f" Round {n - 1} reviews are in round-{n - 1}/. Address every VERDICT: CHANGES, commit, and update build.md for round {n}."
+    if not run_agent(j, "builder", message, resume=last_session(j, "builder") if n > 1 else None):
+        return False
+    if first_line(d / "build.md") == "STATUS: BLOCKED":
+        return advance(j, "needs-human")
+    ok, why = job("advance", j["id"], "gate")
+    if ok:
+        print(why, flush=True)
+        return True
+    say(j, f"the gate step refused the build: {why}")  # nothing committed, or a dirty tree: tell the builder once
+    return run_agent(j, "builder", f"Build round {n}. The factory refused to send your build to the gate: {why} "
+                     "Fix that, commit, and update build.md.", resume=last_session(j, "builder")) and advance(j, "gate")
+
+
+def merge_main(j):
+    """True when the PR conflicted with the base and the job went back to the builder to merge it."""
+    ok, out = job("merge-main", j["id"])
+    if ok and "merge-main round" in out:
+        print(out, flush=True)
+        return True
+    if not ok:
+        say(j, out)
+    return False
+
+
+def review(j):
+    if merge_main(j):  # don't pay for reviews of a branch that cannot merge
+        return True
+    n = j["round"]
+    rd = JOBS / j["id"] / f"round-{n}"
+    job("serve", j["id"])  # starts the shared review dev server again if it died
+    reviewers = j["agents"]["reviewers"]
+    commit = re.search(r"^COMMIT: (\w+)", (rd / "checks.md").read_text(), re.M).group(1)  # what the gate passed
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=j["worktree"], capture_output=True, text=True).stdout.strip()
+
+    # A reviewer runs no git: an allow rule such as `git diff *` also allows `--output=<file>`. The engine
+    # writes the change out for them to read.
+    span = f"origin/{CONFIG['base_branch']}...{commit}"
+    (rd / "changes.diff").write_bytes(b"".join(
+        subprocess.run(["git", *args], cwd=j["worktree"], capture_output=True, check=True).stdout
+        for args in (["log", "--oneline", span.replace("...", "..")], ["diff", "--no-color", "--no-ext-diff", "--no-textconv", span])))
+
+    def one(r, extra="", resume=None):
+        page = f" Port: {port(j, 1)}." if r in {"ux", "ui"} else ""
+        path = rd / f"review-{r}.md"
+        # Read-only: a reviewer reads the repo and writes its one review file. It has no shell, except that a
+        # page reviewer gets node to drive the browser. node can write anywhere; the check below only catches
+        # writes to the branch and worktree.
+        rule = re.sub(r"^(\w):", lambda m: "/" + m.group(1).lower(), path.as_posix())  # the CLI wants C:/x as /c/x
+        allow = ["Read", "Grep", "Glob", f"Edit(/{rule})", *(["Bash(node *)"] if page else [])]
+        tools = ["Read", "Grep", "Glob", "Write", *(["Bash"] if page else [])]
+        read = f" You cannot run git: the commits and the diff are in round-{n}/changes.diff."
+        ok = run_agent(j, f"reviewer-{r}", f"Review round {n}.{page}{read}{extra}", model=reviewers[r], resume=resume,
+                       allow=allow, tools=tools)
+        if path.exists():  # the engine records which commit the verdict is for, as the gate does in checks.md
+            verdict, _, rest = path.read_text().partition("\n")
+            path.write_text(f"{verdict}\nCOMMIT: {commit}\n" + re.sub(r"\ACOMMIT:.*\n", "", rest))
+        return ok
+
+    missing = [r for r in reviewers if not (rd / f"review-{r}.md").exists()]
+    with ThreadPoolExecutor(max_workers=len(missing) or 1) as pool:  # reviewers run in parallel; wait for all
+        if not all(list(pool.map(one, missing))):
+            return False
+    for attempt in (1, 2):
+        heads, dirty = set(git("rev-parse", "HEAD", j["branch"]).split()), git("status", "--porcelain")
+        if heads != {commit} or dirty:  # a reviewer edited what it was reviewing: its verdict is for another state
+            return stop(j, f"The branch or working tree changed during review round {n}. Reviewers read commit "
+                           f"{commit}; the branch is now at {', '.join(sorted(heads))}. Uncommitted changes: {dirty or 'none'}.")
+        if merge_main(j):  # the base moved while they read
+            return True
+        job("sync", j["id"])
+        verdicts = set(load(j["id"])["reviews"].values())
+        target = "needs-human" if "BLOCKED" in verdicts else "build" if "CHANGES" in verdicts else "approve"
+        ok, why = job("advance", j["id"], target)
+        if ok:
+            print(why, flush=True)
+            return True
+        if target == "build" and "go to needs-human" in why:  # that was the last round
+            return advance(j, "needs-human")
+        # A reviewer that wrote no review file, or one that cites no evidence, goes back once.
+        back = [r for r in reviewers if not (rd / f"review-{r}.md").exists()] or re.findall(r"review-(\w+)\.md has no", why)
+        if attempt == 2 or not back:
+            return say(j, why)
+        if not all(one(r, f" The factory could not accept your review: {why}. Write review-{r}.md.",
+                       last_session(j, f"reviewer-{r}")) for r in back):
+            return False
+
+
+def step(j):
+    """Do the job's next step. False when a stage failed or a limit stopped the job."""
+    d, stage = JOBS / j["id"], j["stage"]
+    if stage == "intake":
+        if not run_agent(j, "intake", ""):
+            return False
+        decision = first_line(d / "intake.md")
+        if decision == "DECISION: ACCEPT":
+            res = script("route", j["id"])
+            print((res.stdout + res.stderr).strip(), flush=True)
+            return res.returncode == 0 and advance(j, "spec")
+        return advance(j, {"DECISION: NEEDS-INFO": "needs-info", "DECISION: REJECT": "rejected"}.get(decision, "spec"))
+    if stage == "spec":
+        if not run_agent(j, "spec-writer", ""):
+            return False
+        if (first_line(d / "spec.md") or "").startswith("STATUS:"):  # NEEDS-SPLIT or BLOCKED: a person decides
+            return stop(j, f"The spec writer stopped: {first_line(d / 'spec.md')}\n\n"
+                           + (d / "spec.md").read_text().split("\n", 1)[1].strip()
+                           + "\n\nChange the issue (or split it), then `job retry` writes the spec again.")
+        return advance(j, "build")
+    if stage == "build":
+        return build(j)
+    if stage == "gate":
+        res = script("gate", j["id"])
+        print((res.stdout + res.stderr).strip(), flush=True)
+        if res.returncode == 0:
+            return advance(j, "review")
+        return res.returncode == 1 and (advance(j, "build", quiet=True) or advance(j, "needs-human"))
+    if stage == "review":
+        return review(j)
+    if stage == "approve":
+        if j.get("always_stop"):  # a rule sends it to a person: no approver is asked
+            return advance(j, "needs-human")
+        if not run_agent(j, "approver", f"PR: #{j['pr']}. Final round: {j['round']}."):
+            return False
+        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True) and not j.get("held"):
+            stage = "merging"
+        else:  # ESCALATE, or approved with unattended merge off: a person merges
+            return advance(j, "needs-human")
+    if stage == "council":  # the Dev council's slot (build plan F1). Nothing sits in it yet: pass straight through
+        return advance(j, "needs-human")
+    if stage == "merging":
+        ok, out = job("merge", j["id"])
+        print(out, flush=True)
+        if "CI never started" in out:  # the account, not the change: nothing else merges until it's fixed
+            raise Halt("CI is not running on GitHub, so this run stops here. No other job merges until it does.")
+        return ok
+    return say(j, f"nothing to do in stage {stage}")
+
+
+def process(job_id):
+    """Take one job as far as it goes: to done, to a person, or to a failed stage."""
+    while True:
+        j = load(job_id)
+        if j["stage"] in DONE:
+            return True
+        if not step(j):
+            return load(job_id)["stage"] in DONE  # a limit handed it to a person: that isn't a failed run
+        after = load(job_id)
+        if (after["stage"], after["round"]) == (j["stage"], j["round"]):
+            return say(j, f"no progress in {j['stage']}; stopping this job")
+
+
+def queue(only):
+    ok, out = job("queue")
+    if not ok:
+        sys.exit(out)
+    rows = [line.split("\t") for line in out.splitlines() if "\t" in line]
+    return [r for r in rows if only in {None, int(r[1])}]
+
+
+def waiting(only):
+    """A waiting job's PR may carry its next round: a `/factory` comment, a changes-requested review or
+    failed CI, or it conflicts with the base. What a person said goes first: a round started after it
+    would move the job past it."""
+    for row in queue(only):
+        if row[0] == "wait" and row[3] == "needs-human":
+            for command in ("pr-feedback", "merge-main"):
+                ok, out = job(command, row[2])
+                if not out.endswith("nothing"):
+                    print(out, flush=True)
+                if load(row[2])["stage"] != "needs-human":
+                    break  # a round started
+
+
+def main(argv):
+    only = int(argv[0]) if argv else None
+    res = script("frontier")
+    print((res.stdout + res.stderr).strip(), flush=True)
+    waiting(only)
+    failed, touched = set(), []
+    while True:
+        todo = [r for r in queue(only) if r[0] in {"new", "resume"} and int(r[1]) not in failed]
+        if not todo:
+            break
+        action, issue, job_id, stage = todo[0][:4]
+        ok, out = True, ""
+        if action == "new":
+            ok, out = job("create", issue)
+            job_id = out.splitlines()[-1].strip() if ok else None
+        elif stage == "needs-info":  # the author replied
+            ok, out = job("advance", job_id, "intake")
+        if not ok:
+            print(out, flush=True)
+            failed.add(int(issue))
+            continue
+        touched.append(job_id)
+        try:
+            if not process(job_id):
+                failed.add(int(issue))
+            if load(job_id)["stage"] == "merged":  # the base moved: other open PRs may conflict now
+                waiting(only)
+        except Halt as e:
+            print(e, flush=True)
+            break
+    if touched:
+        print(job("summary", *dict.fromkeys(touched))[1], flush=True)
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

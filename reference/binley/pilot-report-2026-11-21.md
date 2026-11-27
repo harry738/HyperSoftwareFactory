@@ -1,17 +1,17 @@
 # Factory pilot report: issue #23 (branch finder), job `001-pilot-branch-finder-page`
 
-**Final outcome: `merged`.** PR #24 was merged into `factory-pilot` at 22:24:44 UTC (merge commit `707d6c1`), 55 minutes after the start. Hari approved the merge in the parent session, which re-ran the merge gate from this clone with the fixed gate script (PASS, 298s), merged with `gh pr merge 24 --merge`, and ran `factory/bin/job queue` to record the job as `merged`. So the factory's own `job merge` command never completed a merge in this pilot: the last step was done by hand. I verified the result: the PR is MERGED, `job summary` shows `merged`, the worktree is gone, the `factory:needs-human` label is off, and `src/app/branches/` and `src/lib/branches.ts` are on `origin/factory-pilot`. Issue #23 is still open, because GitHub only closes issues on merges into the default branch.
+**Final outcome: `merged`.** PR #24 was merged into `factory-pilot` at 22:24:44 UTC (merge commit `707d6c1`), 55 minutes after the start. The operator approved the merge in the parent session, which re-ran the merge gate from this clone with the fixed gate script (PASS, 298s), merged with `gh pr merge 24 --merge`, and ran `factory/bin/job queue` to record the job as `merged`. So the factory's own `job merge` command never completed a merge in this pilot: the last step was done by hand. I verified the result: the PR is MERGED, `job summary` shows `merged`, the worktree is gone, the `factory:needs-human` label is off, and `src/app/branches/` and `src/lib/branches.ts` are on `origin/factory-pilot`. Issue #23 is still open, because GitHub only closes issues on merges into the default branch.
 
 The rest of this section is the state before that merge, kept for the record.
 
-**Earlier outcome: `needs-human`, not merged.** The job went intake → spec → build → gate → review → approve in one round with every verdict PASS. The final step, `factory/bin/job merge`, was refused for the orchestrator by Claude Code's auto-mode permission classifier. Hari then ran it from PowerShell at 22:15 UTC and the merge gate failed in 0 seconds, so the factory moved the job to `needs-human`. The failure is a Windows fault in the gate script, not in the feature (see "The merge attempt" below). PR #24 is open, marked ready, and unchanged at the commit that passed the round-1 gate.
+**Earlier outcome: `needs-human`, not merged.** The job went intake → spec → build → gate → review → approve in one round with every verdict PASS. The final step, `factory/bin/job merge`, was refused for the orchestrator by Claude Code's auto-mode permission classifier. The operator then ran it from PowerShell at 22:15 UTC and the merge gate failed in 0 seconds, so the factory moved the job to `needs-human`. The failure is a Windows fault in the gate script, not in the feature (see "The merge attempt" below). PR #24 is open, marked ready, and unchanged at the commit that passed the round-1 gate.
 
 ## The merge attempt (added after the first version of this report)
 - **What happened.** From PowerShell, `bash` on the PATH is WSL's `C:\Windows\System32\bash.exe`, which cannot read `E:/` paths. The gate ran `checks.sh` with it and got `No such file or directory`, exit 127 in 0s. The factory then did what it should for a failed merge gate: marked PR #24 ready, posted "needs a human" on it, and added `factory:needs-human` to issue #23.
 - **Whose fault.** Mine. The PowerShell command in the first version of this report was not tested from PowerShell. The existing `# binley:` patch only picked the right bash when the script was started from Git Bash.
 - **Fix.** `factory/bin/gate` now finds Git Bash from git's own install folder instead of the PATH. Tested under both a Git Bash PATH and a PowerShell-like PATH. Committed locally as `fd6951d`, not pushed.
 - **What was not affected.** The branch: the sync with `factory-pilot` was a no-op (the base has not moved), so the PR head is still `160d007`, the exact commit that passed the round-1 gate and all three reviews.
-- **Ways out of `needs-human`** (I have not taken either; it is Hari's call):
+- **Ways out of `needs-human`** (I have not taken either; it is the operator's call):
   1. Merge PR #24 by hand on GitHub. The next `factory/bin/job queue` records the job as `merged` and removes the `factory:needs-human` label. This is safe because the head commit already passed the gate.
   2. Give feedback with `factory/bin/job feedback 23`, which starts a new build round and runs the whole pipeline again, including the merge with the fixed gate. About 30 more minutes and a few dollars.
 
@@ -81,8 +81,8 @@ Per agent, computed from the job's subagent transcripts with the same formula as
 Caveats: the figure uses the prices in `factory/config.json`, which I did not check against a price list. It excludes the orchestrator session (this one), which is not a factory agent. The three Fable agents are 74% of the cost; the spec alone cost more than the build.
 
 ## Human minutes
-About two minutes: Hari ran the merge command once by hand. Nothing else needed a person up to approval. Three points where a person was or is needed:
-1. **Merge (still open).** The permission classifier refused `factory/bin/job merge` for the orchestrator. Hari ran it; it failed on the gate's bash lookup, and the job now waits on him in `needs-human`.
+About two minutes: the operator ran the merge command once by hand. Nothing else needed a person up to approval. Three points where a person was or is needed:
+1. **Merge (still open).** The permission classifier refused `factory/bin/job merge` for the orchestrator. The operator ran it; it failed on the gate's bash lookup, and the job now waits on the operator in `needs-human`.
 2. **Git sign-in.** Git Credential Manager opened a sign-in dialog on the desktop when the factory ran `git fetch`. I worked around it without a person (see Problems), at a cost of about 4 minutes.
 3. **Process listing.** The classifier refused a command that lists process command lines while I was diagnosing the hang. I used start times instead.
 

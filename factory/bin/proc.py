@@ -1,18 +1,23 @@
 """Process helpers shared by the factory scripts. binley: added for Windows; none of this is upstream.
 
   setup()                 call first in every script: UTF-8, no git prompts, children die with the script
+  layout(script)          where the project's repo, jobs, worktrees and config are
+  bash()                  the bash to run checks.sh and setup.sh with
   lock(f)                 wait for an exclusive lock on an open file, as flock does
   spawn_detached(...)     start a process that outlives the script (the review dev server)
   listening(port)         PIDs listening on a TCP port
   stop_port(port)         stop whatever listens on a port, with its child processes
+  kill_tree(pid)          stop a process and everything it started
 
 As a script: `python factory/bin/proc.py stop-port <port>`, for agents stopping their dev server.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 WINDOWS = sys.platform == "win32"
 
@@ -26,6 +31,34 @@ def setup():
     # A git that needs a sign-in fails at once instead of opening a dialog nobody sees.
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
     os.environ["GCM_INTERACTIVE"] = "never"
+
+
+def layout(script):
+    """Where the factory's files are.
+
+    Central: FACTORY_HOME and FACTORY_PROJECT are set. The engine stays where it
+    is installed. A project's config is in <home>/projects/<project>/, and its
+    clone, worktrees and jobs are in <home>/work/<project>/, so nothing of the
+    factory's is inside the project's repo.
+    Legacy: the factory was copied into the project's repo, at <repo>/factory/.
+    """
+    home, project = os.environ.get("FACTORY_HOME"), os.environ.get("FACTORY_PROJECT")
+    if home and project:
+        conf, work = Path(home) / "projects" / project, Path(home) / "work" / project
+        return {"repo": work / "repo", "jobs": work / "jobs", "worktrees": work / "worktrees",
+                "config": conf / "config.json", "checks": conf / "checks.sh", "setup": conf / "setup.sh"}
+    repo = Path(script).resolve().parents[2]
+    f = repo / "factory"
+    return {"repo": repo, "jobs": f / "jobs", "worktrees": repo / ".worktrees",
+            "config": f / "config.json", "checks": f / "checks.sh", "setup": f / "setup.sh"}
+
+
+def bash():  # binley: outside Git Bash, "bash" on PATH is WSL, which can't read E:/ paths
+    git = shutil.which("git") if WINDOWS else None
+    for root in (Path(git).resolve().parents[1:3] if git else ()):
+        if (root / "bin" / "bash.exe").exists():
+            return str(root / "bin" / "bash.exe")
+    return shutil.which("bash") or "bash"
 
 
 def _kill_children_with_this_process():
@@ -99,6 +132,18 @@ def listening(port):
         if len(cols) == 5 and cols[3] == "LISTENING" and cols[1].rsplit(":", 1)[-1] == str(port):
             pids.add(int(cols[4]))
     return pids
+
+
+def kill_tree(pid):
+    """Stop a process and everything it started. On POSIX the process must have
+    been started in its own session (start_new_session=True)."""
+    if WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
+    else:
+        try:
+            os.killpg(pid, 9)
+        except ProcessLookupError:
+            pass
 
 
 def stop_port(port):
