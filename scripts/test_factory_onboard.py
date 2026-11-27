@@ -36,4 +36,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert rejects(slug="ok", repo="https://github.com/owner/x")
     assert list(fo.load_config()["projects"]) == ["demo"], "rejected input must not be saved"
 
+for empty_projects in ("projects:\n", "projects: null\n", "projects: ~\n"):
+    with tempfile.TemporaryDirectory() as tmp:
+        fo.FACTORY_ROOT = Path(tmp)
+        fo.CONFIG_PATH = Path(tmp) / "projects.yaml"
+        fo.CONFIG_PATH.write_text(empty_projects, encoding="utf-8")
+
+        out = fo.onboard("first", "owner/first")
+        assert fo.load_config()["projects"]["first"]["repo"] == "owner/first"
+        assert (out / "README.md").exists(), "first project drafts must be written"
+
 print("ok")
