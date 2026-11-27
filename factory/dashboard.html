@@ -548,7 +548,10 @@ async function render() {
     lastRender = html
     $('board').innerHTML = board
     $('banner').innerHTML = banner
+    // Rebuilding the KPI buttons drops keyboard focus: put it back on the new button with the same filter.
+    const focusedKpi = document.activeElement?.closest?.('#kpis [data-filter]')?.dataset.filter
     $('kpis').innerHTML = kpis
+    if (focusedKpi) $('kpis').querySelector(`[data-filter="${focusedKpi}"]`)?.focus()
     $('attn').innerHTML = attn
   }
   const noun = jobs.length === 1 ? 'job' : 'jobs'
