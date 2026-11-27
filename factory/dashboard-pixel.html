@@ -621,6 +621,7 @@ $('project').addEventListener('change', (e) => { location.hash = encodeURICompon
 function pickProject() {
   current = projects.find((p) => p.slug === decodeURIComponent(location.hash.slice(1)))
     || projects.find((p) => p.installed) || projects[0]
+  if (jobsSlug !== current.slug) { jobs = []; jobsSlug = null; render() } // another project's jobs never stay on the board
   document.title = current.name ? `${current.name} · HyperSoftwareFactory` : 'HyperSoftwareFactory'
 }
 
@@ -690,6 +691,7 @@ function tone(first) {
 
 const firstLines = new Map()
 
+let lastLinksHtml = ''
 let drawerGen = 0 // bumped by every drawer selection, so an older load can't overwrite a newer one
 async function refreshDrawer(gen = drawerGen) {
   const job = jobsSlug === current.slug ? jobs.find((j) => j.id === openJobId) : null
@@ -697,7 +699,8 @@ async function refreshDrawer(gen = drawerGen) {
   $('d-head').className = `d-head ${tint(job.stage)}`
   $('d-num').textContent = `${job.id} · ${job.stage}${job.round ? ` · round ${job.round}` : ''} · $${Number(job.cost_usd).toFixed(2)} · ${elapsed(job)}`
   $('d-title').textContent = job.title
-  $('d-links').innerHTML = links(job)
+  const linksHtml = links(job)
+  if (linksHtml !== lastLinksHtml) { lastLinksHtml = linksHtml; $('d-links').innerHTML = linksHtml } // unchanged links keep focus
 
   const base = `${jobsDir()}${job.id}/`
   const files = sortFiles(await listFiles(base))
@@ -706,8 +709,10 @@ async function refreshDrawer(gen = drawerGen) {
 
   let text = null
   if (openPath) {
-    text = await fetchText(base + openPath)
-    firstLines.set(base + openPath, text.split('\n')[0].trim())
+    const path = openPath
+    text = await fetchText(base + path)
+    if (gen !== drawerGen) return
+    firstLines.set(base + path, text.split('\n')[0].trim())
   }
   await Promise.all(files.filter((f) => !firstLines.has(base + f)).map(async (f) => {
     firstLines.set(base + f, (await fetchText(base + f)).split('\n')[0].trim())
