@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 # Deployable roadmap (proposal)
 
 Proposal only. Not an official revision of `reference/build-plan.md`. No new official E/F numbers are allocated. The operator remains the only merger. FullAuto is out of scope for this plan. Auto-merge and auto-deploy are not adopted.
