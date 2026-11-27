@@ -19,7 +19,7 @@ HOME = TMP / "home"
 PY = Path(sys.executable).as_posix()
 
 FAKE_GH = r'''
-import json, re, sys
+import json, os, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
 path = Path(__file__).with_name("gh-state.json")
@@ -32,6 +32,15 @@ out = lambda x: print(x if isinstance(x, str) else json.dumps(x))
 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 if a[:2] == ["api", "user"]:
     out("operator")
+elif a[0] == "api" and "/actions/jobs/" in a[1]:
+    ran = not a[1].endswith("/901")  # job 901 is the one GitHub never started
+    out({"conclusion": "failure", "steps": [{"name": "test"}] if ran else [], "runner_name": "runner-1" if ran else ""})
+elif a[:2] == ["run", "rerun"]:
+    if not os.environ.get("FAKE_CHECKS"):  # the account is fixed: the re-run passes
+        for p in s["prs"]:
+            p["checks"] = []
+elif a[:2] == ["pr", "merge"]:
+    pr()["state"] = "MERGED"
 elif a[0] == "api" and a[1].endswith("/comments"):
     out(pr(re.search(r"/pulls/(\d+)/", a[1]).group(1)).get("inline", []))
 elif a[:2] == ["issue", "list"]:
@@ -41,6 +50,10 @@ elif a[:2] == ["issue", "view"]:
     out({"number": i["number"], "title": i["title"], "body": i["body"], "author": {"login": "author"}, "state": i["state"],
          "labels": [{"name": l} for l in i["labels"]], "url": "https://example.test/issues/%d" % i["number"],
          "comments": [{"author": {"login": "operator"}, "body": c, "createdAt": "2026-01-01T00:00:00Z"} for c in i["comments"]]})
+elif a[:2] == ["issue", "create"]:
+    n = len(s["issues"]) + 1
+    s["issues"].append({"number": n, "title": opt("--title"), "body": opt("--body"), "labels": [], "state": "OPEN", "comments": []})
+    out("https://example.test/issues/%d" % n)
 elif a[:2] == ["issue", "comment"]:
     issue()["comments"].append(opt("--body"))
 elif a[:2] == ["issue", "edit"]:
@@ -56,9 +69,16 @@ elif a[:2] == ["pr", "create"]:
 elif a[:2] == ["pr", "view"]:
     p = pr()
     out({"isDraft": p["isDraft"], "state": p["state"], "comments": p["comments"], "reviews": p.get("reviews", []),
+         "mergeable": os.environ.get("FAKE_MERGEABLE") or p.get("mergeable", "MERGEABLE"),
          "headRefOid": p.get("headRefOid", "sha0")})
 elif a[:2] == ["pr", "checks"]:
-    out(pr().get("checks", []))
+    if os.environ.get("FAKE_CHECKS"):  # they stay on the PR until a re-run, as on GitHub
+        pr()["checks"] = json.loads(os.environ["FAKE_CHECKS"])
+        path.write_text(json.dumps(s, indent=1))
+    checks = pr().get("checks", [])
+    out(checks)
+    if "--watch" in a and any(c["bucket"] == "fail" for c in checks):
+        sys.exit(1)
 elif a[:2] == ["pr", "ready"]:
     pr()["isDraft"] = False
 elif a[:2] == ["pr", "comment"]:
@@ -74,9 +94,12 @@ from pathlib import Path
 a = sys.argv[1:]
 agent = Path(a[a.index("--append-system-prompt-file") + 1]).stem.removeprefix("agent-")
 prompt = a[a.index("-p") + 1]
-with Path(__file__).with_name("claude-calls.jsonl").open("a") as f:
-    f.write(json.dumps({"agent": agent, "cwd": Path.cwd().as_posix(), "args": a,
-                        "token": bool(os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))}) + "\n")
+# One file per call: parallel reviewers appending to one file garble it on Windows.
+log = Path(__file__).with_name("claude-calls")
+log.mkdir(exist_ok=True)
+(log / ("%020d-%d.json" % (time.time_ns(), os.getpid()))).write_text(json.dumps(
+    {"agent": agent, "cwd": Path.cwd().as_posix(), "args": a,
+     "token": bool(os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))}))
 folder = Path(re.search(r"Job folder: (.+?)/\. ", prompt).group(1))
 worktree = Path(re.search(r"Worktree: (.+?)\. Branch", prompt).group(1))
 print(json.dumps({"type": "system", "subtype": "init"}), flush=True)
@@ -102,15 +125,22 @@ elif agent == "builder":
     if os.environ.get("FAKE_TOUCH"):
         (worktree / os.environ["FAKE_TOUCH"]).write_text("{}\n")
     git = ["git", "-C", str(worktree), "-c", "user.email=b@example.test", "-c", "user.name=builder"]
-    subprocess.run(git + ["add", "-A"], check=True)
-    subprocess.run(git + ["commit", "-q", "-m", "Add feature"], check=True)
+    for args in (["add", "-A"], ["commit", "-q", "-m", "Add feature"]):
+        for attempt in range(5):  # on Windows, writing an object can fail while a scanner holds its folder
+            done = subprocess.run(git + args, capture_output=True, text=True)
+            if done.returncode == 0:
+                break
+            time.sleep(0.3)
+        else:
+            sys.exit("fake builder: git %s: %s" % (args[0], done.stderr))
     (folder / "build.md").write_text("STATUS: READY\n\n## Summary\n- added feature.txt\n")
 elif agent.startswith("reviewer-"):
     if os.environ.get("FAKE_SILENT") == agent and not (folder / "silent-done").exists():
         (folder / "silent-done").write_text("")  # replies with its verdict, writes no review file
     else:
         (rd / ("review-%s.md" % agent.split("-", 1)[1])).write_text(
-            "VERDICT: PASS\n\n## Summary\n- fine\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n")
+            "VERDICT: PASS\n\n## Summary\n- fine, ask @someone\n\n## Evidence\n- feature.txt:1: read it\n\n## Findings\nNone.\n"
+            "\n## Notes\n- feature.txt could have a newline\n")
     if os.environ.get("FAKE_EDIT") == agent:  # a reviewer that commits to the branch it reviews
         (worktree / "feature.txt").write_text("edited by a reviewer\n")
         subprocess.run(["git", "-C", str(worktree), "-c", "user.email=r@example.test", "-c", "user.name=reviewer",
@@ -125,7 +155,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "", "FAKE_CHECKS": "", "FAKE_MERGEABLE": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -180,7 +210,7 @@ def folder(n):
 
 
 def calls():
-    return [json.loads(line) for line in (TMP / "claude-calls.jsonl").read_text().splitlines()]
+    return [json.loads(f.read_text()) for f in sorted((TMP / "claude-calls").glob("*.json"))]
 
 
 def now():
@@ -191,7 +221,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 14)]
+               "state": "OPEN", "comments": []} for n in range(1, 17)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -216,7 +246,7 @@ def test_onboard_registers_clones_and_reports():
     (CONF / "setup.sh").write_text('#!/usr/bin/env bash\necho ran >> "$FACTORY_HOME/setup-ran.txt"\n')
     c.pop("dev_server")
     (CONF / "config.json").write_text(json.dumps(c))
-    config(stage_stall_minutes=0.05, stage_timeout_minutes=2, retry_waits_seconds=[0])  # quick limits for the tests
+    config(stage_timeout_minutes=2, retry_waits_seconds=[0])  # quick limits for the tests
     assert "yes  checks.sh written" in factory("onboard", (TMP / "origin.git").as_posix(), "--name", "demo").stdout
 
 
@@ -230,6 +260,12 @@ def test_run_takes_an_issue_to_a_pr_waiting_for_the_operator():
     pr, issue = state["prs"][0], state["issues"][0]
     assert pr["isDraft"] is False and pr["body"] == "Closes #1", pr
     assert "approved, waiting for you to merge" in pr["comments"][-1]["body"], pr["comments"]
+    evidence = pr["comments"][-2]["body"]
+    assert "round 1 evidence" in evidence and "feature.txt:1: read it" in evidence and "checks: PASS" in evidence, evidence
+    assert "@someone" not in evidence, "a review must not notify people"
+    follow = state["issues"][-1]
+    assert follow["title"] == "Follow-ups from #1: Add feature 1" and follow["labels"] == [], follow  # not queued
+    assert "could have a newline" in follow["body"] and j["followup_issue"].endswith(f"/{follow['number']}"), follow
     assert "factory:needs-human" in issue["labels"], issue
     git("--git-dir", str(TMP / "origin.git"), "rev-parse", "--verify", j["branch"])  # the factory pushed the branch
     made = calls()
@@ -291,17 +327,22 @@ def test_a_passing_failure_is_tried_again():
 
 
 def test_a_stalled_stage_is_killed_and_handed_to_a_person():
-    label(4)
-    res = factory("run", "demo", FAKE_STALL="builder")
-    assert res.returncode == 0, res.stdout + res.stderr  # handing a job to a person isn't a failed run
-    j = job(4)
-    assert j["stage"] == "needs-human" and j["stopped_in"] == "build", j
-    issue = gh_state()["issues"][3]
-    assert "produced no output" in issue["comments"][-1] and "factory:needs-human" in issue["labels"], issue
-    assert "back in build" in job_cmd("retry", "4")
-    assert factory("run", "demo").returncode == 0
-    j = job(4)
-    assert j["stage"] == "needs-human" and j["pr"] == 13 and "stopped_in" not in j, j
+    config(stage_stall_minutes=0.05)  # 3s, for this test only: a busy machine can be silent that long
+    try:
+        label(4)
+        res = factory("run", "demo", FAKE_STALL="builder")
+        assert res.returncode == 0, res.stdout + res.stderr  # handing a job to a person isn't a failed run
+        j = job(4)
+        assert j["stage"] == "needs-human" and j["stopped_in"] == "build", j
+        issue = gh_state()["issues"][3]
+        assert "produced no output" in issue["comments"][-1] and "factory:needs-human" in issue["labels"], issue
+        assert "back in build" in job_cmd("retry", "4")
+        res = factory("run", "demo")
+        assert res.returncode == 0, res.stdout + res.stderr
+        j = job(4)
+        assert j["stage"] == "needs-human" and j["pr"] == 13 and "stopped_in" not in j, j
+    finally:
+        config(stage_stall_minutes=20)
 
 
 def test_a_factory_comment_on_the_pr_starts_the_next_round():
@@ -322,7 +363,8 @@ def test_a_factory_comment_on_the_pr_starts_the_next_round():
 
 def test_failed_ci_starts_one_round_per_commit_inside_the_round_budget():
     gh_state(lambda s: s["prs"][1].update(headRefOid="sha1", checks=[{"name": "tests", "bucket": "fail", "link": "https://example.test/run/1"}]))
-    assert factory("run", "demo").returncode == 0
+    res = factory("run", "demo")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(2)
     assert j["round"] == 2 and j["round_limit"] == 3 and j["stage"] == "needs-human", j
     assert "CI failed" in (folder(2) / "feedback-1.md").read_text()
@@ -332,7 +374,8 @@ def test_failed_ci_starts_one_round_per_commit_inside_the_round_budget():
 def test_a_job_that_spends_its_budget_is_handed_to_a_person():
     config(job_budget_usd=0.02)
     label(5)
-    assert factory("run", "demo").returncode == 0
+    res = factory("run", "demo")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(5)
     assert j["stage"] == "needs-human" and j["stopped_in"] == "build" and j["cost_usd"] == 0.02, j
     assert "of its $0.02 budget" in gh_state()["issues"][4]["comments"][-1]
@@ -341,7 +384,8 @@ def test_a_job_that_spends_its_budget_is_handed_to_a_person():
 def test_a_human_merge_label_stops_the_job_before_the_approver():
     config(job_budget_usd=15)
     label(6, "human-merge")
-    assert factory("run", "demo").returncode == 0
+    res = factory("run", "demo")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(6)
     assert j["stage"] == "needs-human" and j["always_stop"] == ["the issue is labelled `human-merge`"], j
     assert stages_run(6) == ["intake", "spec-writer", "builder", "reviewer-code"], stages_run(6)  # no approver: the rule decided
@@ -365,7 +409,8 @@ def test_a_sensitive_path_raises_the_risk_and_stops_the_job():
 def test_low_risk_paths_and_the_council_slot():
     config(risk_paths={"low": ["*.txt"], "high": []}, council={})
     label(8)
-    assert factory("run", "demo").returncode == 0
+    res = factory("run", "demo")
+    assert res.returncode == 0, res.stdout + res.stderr
     j = job(8)
     assert j["risk"] == "low" and j["agents"]["reviewers"] == {"code": "haiku"}, j  # every changed file is on a low path
     assert [e["to"] for e in events(8)][-3:] == ["approve", "council", "needs-human"]  # the Dev council's slot, empty for now
@@ -380,7 +425,8 @@ def test_the_gate_runs_the_checks_with_the_build_cache_off():
     config(gate_env={"MY_CACHE": "off"})  # a project adds the switch for its own cache
     label(9)
     try:
-        assert factory("run", "demo").returncode == 0
+        res = factory("run", "demo")
+        assert res.returncode == 0, res.stdout + res.stderr
     finally:
         (CONF / "checks.sh").write_text(checks)
     j = job(9)
@@ -434,6 +480,67 @@ def test_a_reviewer_that_changes_the_branch_stops_the_job():
     res = subprocess.run([sys.executable, str(BIN / "job"), "advance", "13", "approve"],
                          env=env(FACTORY_PROJECT="demo"), capture_output=True, text=True)
     assert res.returncode != 0 and "written for another commit" in res.stdout + res.stderr, res.stdout + res.stderr
+NOT_STARTED = [{"name": "tests", "bucket": "fail", "link": "https://example.test/o/r/actions/runs/9/job/901"}]
+
+
+def test_ci_that_never_started_is_not_a_failed_check():
+    before = job(1)["round"], len(list(folder(1).glob("feedback-*.md")))
+    gh_state(lambda s: s["prs"][0].update(headRefOid="sha9", checks=NOT_STARTED))
+    res = factory("run", "demo")
+    assert res.returncode == 0 and "CI never started" in res.stdout, res.stdout + res.stderr
+    assert (job(1)["round"], len(list(folder(1).glob("feedback-*.md")))) == before, "no build round for CI that never ran"
+
+
+def test_an_unattended_merge_stops_the_run_when_ci_never_starts():
+    config(unattended_merge=True)
+    label(14)
+    label(15)
+    try:
+        res = factory("run", "demo", FAKE_CHECKS=json.dumps(NOT_STARTED))
+    finally:
+        config(unattended_merge=False)
+    assert res.returncode == 0 and "CI never started" in res.stdout, res.stdout + res.stderr
+    j = job(14)
+    assert j["stage"] == "needs-human" and j["stopped_in"] == "merging", j  # `job retry` merges it once CI runs
+    assert "billing or quota" in gh_state()["prs"][-1]["comments"][-1]["body"]
+    assert not list(JOBS.glob("015-*")), "the run must stop, not start the next job"
+    # The account is fixed: retry re-runs the jobs GitHub never started, and merges.
+    gh_state(lambda s: s["issues"][14].update(labels=[]))
+    job_cmd("retry", j["id"])
+    config(unattended_merge=True)
+    try:
+        res = factory("run", "demo")
+    finally:
+        config(unattended_merge=False)
+    assert res.returncode == 0 and job(14)["stage"] == "merged", res.stdout + res.stderr
+
+
+def test_a_waiting_pr_that_conflicts_gets_one_merge_main_round():
+    pr = job(6)["pr"]
+    before = job(6)["round"]
+    conflict = lambda value: gh_state(lambda s: next(p for p in s["prs"] if p["number"] == pr).update(mergeable=value))
+    conflict("CONFLICTING")
+    res = factory("run", "demo")
+    assert res.returncode == 0 and "merge-main round" in res.stdout, res.stdout + res.stderr
+    j = job(6)
+    assert j["round"] == before + 1 and j["stage"] == "needs-human" and j["round_limit"] == 3, j  # the budget is not renewed
+    assert j["held"], "a job that was waiting for a person still waits after merging the base"
+    assert "git merge origin/main" in sorted(folder(6).glob("feedback-*.md"))[-1].read_text()
+    res = factory("run", "demo")
+    assert res.returncode == 0 and job(6)["round"] == before + 1, "the same commit must not start another round"
+    conflict("MERGEABLE")
+
+
+def test_a_conflict_during_review_goes_back_to_the_builder_before_reviewers_run():
+    label(16)
+    res = factory("run", "demo", FAKE_MERGEABLE="CONFLICTING")
+    assert res.returncode == 0, res.stdout + res.stderr
+    j = job(15)  # job ids follow creation order, and issue 15 never became a job
+    assert j["stage"] == "needs-human" and j["round"] == 2, j
+    ran = stages_run(16)
+    assert ran[2:5] == ["builder", "builder", "reviewer-code"], ran  # round 1's reviewers were never started
+
+
 def test_status_lists_every_job():
     out = factory("status").stdout
     assert "== demo" in out and "001-add-feature-1" in out and "005-add-feature-5" in out, out

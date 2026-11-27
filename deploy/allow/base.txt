@@ -1,0 +1,5 @@
+# Hosts every project needs. HTTPS only; one host per line.
+github.com
+api.github.com
+api.anthropic.com
+platform.claude.com

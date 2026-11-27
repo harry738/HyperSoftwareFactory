@@ -16,6 +16,7 @@ Usage:
   job stop <job>                 a limit was hit: any running stage → needs-human, with the reason (stdin)
   job retry <job>                put a stopped job back in the stage it stopped in, with a fresh budget
   job pr-feedback <job>          start the next round from a `/factory` PR comment, a changes-requested review or failed CI
+  job merge-main <job>           a PR that conflicts with the base: start a round that merges it
   job agents <job> <json>        record the routed agent set (called by factory/bin/route)
   job sync <job>                 refresh reviews, gate and cost from the job's files
   job serve <job>                start the review dev server if it isn't running (when resuming a review)
@@ -150,8 +151,11 @@ def log_event(job, old):
            "gate": job.get("gate"), "reviews": job.get("reviews"),
            "pr": job.get("pr"), "decision": first_line(job_dir(job["id"]) / "decision.md"),
            "stopped_in": job.get("stopped_in")}
-    with (JOBS / "events.jsonl").open("a") as f:
-        f.write(json.dumps(row) + "\n")
+    # Two `job` processes (a run, and a person's command) can log at once; append isn't atomic on Windows.
+    with (JOBS / "events.lock").open("w") as held:
+        proc.lock(held)
+        with (JOBS / "events.jsonl").open("a") as f:
+            f.write(json.dumps(row) + "\n")
 
 
 def all_jobs():
@@ -440,6 +444,102 @@ def hand_to_human(job):
     label("issue", job["issue"], add=LABELS["needs_human"])
 
 
+SECRET_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+SECRET = re.compile(r"(gh[pousr]_|github_pat_|sk-ant-)[A-Za-z0-9_-]{8,}")
+CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")  # a NUL cannot go in a command-line argument
+HOME_DIR = re.compile(r"((?:[\\/]+)(?:Users|home)(?:[\\/]+))[^\\/\s:\"']+", re.I)
+
+
+def path_pattern(path):
+    """`path` as tools may print it: either slash, doubled in escaped output, any case,
+    and a Windows drive also as Git Bash writes it (/c/...)."""
+    parts = [p for p in re.split(r"[\\/]+", str(path)) if p]
+    if not parts:
+        return None
+    drive = re.fullmatch(r"([A-Za-z]):", parts[0])
+    if drive:
+        head = rf"(?:{drive[1]}:|(?:/cygdrive|/mnt)?/{drive[1]})"
+        parts = parts[1:]
+    else:
+        head = ""
+    sep = r"[\\/]+"
+    return re.compile(head + "".join(sep + re.escape(p) for p in parts), re.I)
+
+
+def publishable(job, text, limit):
+    """Agent and check output, made fit to post: tokens and local paths removed, nobody @mentioned,
+    and cut to `limit` characters (the end is kept: that is where a failure shows)."""
+    text = CONTROL.sub("", text)
+    for value in filter(None, (os.environ.get(n) for n in SECRET_ENV)):
+        text = text.replace(value, "[secret]")
+    text = SECRET.sub("[secret]", text)
+    places = [(job.get("worktree"), "."), (JOBS, "<jobs>"), (REPO, "<repo>"), (LAYOUT["checks"].parent, "<config>"),
+              (os.environ.get("FACTORY_HOME"), "<factory-home>"), (Path.home(), "~")]
+    for path, name in places:
+        pattern = path and path_pattern(path)
+        if pattern:
+            text = pattern.sub(lambda m: name, text)
+    text = HOME_DIR.sub(r"\1[user]", text)  # backstop: any other user's folder name
+    text = re.sub(r"@(?=\w)", "@\u200b", text)
+    return text if len(text) <= limit else "[cut]\n" + text[-limit:]
+
+
+def fenced(text):
+    """In a code block the text cannot break out of, so nothing in it renders."""
+    fence = "~" * max([4, *(len(run) + 1 for run in re.findall(r"~{4,}", text))])
+    return f"{fence}\n{text}\n{fence}"
+
+
+def post_evidence(job):
+    """E4.3: what the reviewers saw and what the checks printed, on the PR, once per round."""
+    if not job["pr"]:
+        return
+    rd = round_dir(job)
+    try:  # the evidence is for the operator to read; the job doesn't depend on it
+        names = reviewers(job)
+        parts = [f"### Factory: round {job['round']} evidence"]
+        for r in names:
+            path = rd / f"review-{r}.md"
+            body = "\n\n".join(f"{h}:\n{section(path, h)}" for h in ("Summary", "Evidence") if section(path, h))
+            parts.append(f"<details><summary>{r}: {job['reviews'].get(r)}</summary>\n\n"
+                         f"{fenced(publishable(job, body or '(nothing written)', 16000 // max(len(names), 1)))}\n\n</details>")
+        log = rd / "checks.log"
+        if log.exists():
+            tail = "\n".join(log.read_text(errors="replace").rstrip().splitlines()[-60:])
+            parts.append(f"<details><summary>checks: {job.get('gate')}, last lines of the log</summary>\n\n"
+                         f"{fenced(publishable(job, tail, 8000))}\n\n</details>")
+        comment("pr", job["pr"], "\n\n".join(parts))
+    except (Refused, OSError, ValueError) as e:
+        print(f"{job['id']}: could not post the review evidence: {e}", file=sys.stderr)
+
+
+def file_follow_ups(job):
+    """E4.4: the reviewers' non-blocking notes become one issue, without the queue label. Notes from
+    rounds after it was filed (feedback sent the job back) go on that issue as a comment."""
+    try:
+        notes, done = {}, job.get("followup_round", 0)
+        for r in reviewers(job):
+            for n in range(done + 1, job["round"] + 1):
+                path = round_dir(job, n) / f"review-{r}.md"
+                text = section(path, "Notes") if path.exists() else None
+                if text and text.strip().rstrip(".").lower() != "none":
+                    notes.setdefault(text, r)
+        if not notes:
+            return
+        # capped: a Windows command line holds 32767 characters
+        body = publishable(job, "\n\n".join(f"## From the {r} reviewer\n\n{text}" for text, r in notes.items()), 20000)
+        if job.get("followup_issue"):
+            comment("issue", job["followup_issue"].rsplit("/", 1)[-1], body)
+        else:  # ponytail: a crash between this and the job's save files it twice
+            intro = (f"Non-blocking notes from the reviews of #{job['issue']}. Not queued: add the "
+                     f"`{LABELS['queue']}` label to have the factory work on it.\n\n")
+            job["followup_issue"] = gh("issue", "create", "--title", f"Follow-ups from #{job['issue']}: {job['title']}",
+                                       "--body", intro + body).strip()
+        job["followup_round"] = job["round"]
+    except (Refused, OSError, ValueError) as e:
+        print(f"{job['id']}: could not file the follow-up issue: {e}", file=sys.stderr)
+
+
 def git(job, *args, check=True):
     return run(["git", *args], cwd=job["worktree"], check=check)
 
@@ -619,8 +719,10 @@ def advance(job, stage):
             if last:
                 escalate(job, f"Review rounds exhausted. Outstanding CHANGES in round-{job['round']}/ "
                               f"from: {', '.join(changes)}.")
-            else:
-                next_round(job)
+
+        post_evidence(job)
+        if stage == "build":
+            next_round(job)
 
     elif old == "approve":
         line = first_line(d / "decision.md")
@@ -630,6 +732,7 @@ def advance(job, stage):
             require(not stops, f"an always-stop rule applies ({'; '.join(stops)}): go to needs-human")
             require(line == "APPROVE", f"decision.md starts with {line!r}, not APPROVE")
             require(unattended, "unattended_merge is off in config.json: go to needs-human")
+            require(not job.get("held"), "the job was waiting for a person before it merged the base: go to needs-human")
         elif stops:
             if not decided_this_round(job):  # no approver was asked: the rule is the decision
                 escalate(job, "An always-stop rule applies, so this needs you whatever the reviews say:\n\n"
@@ -652,6 +755,10 @@ def advance(job, stage):
 
     if stage == "needs-human":
         hand_to_human(job)
+
+    # after the hand-off: if that fails, the transition is run again and must not file a second issue
+    if old == "review" and stage != "build":
+        file_follow_ups(job)
 
     if old == "review" or stage in TERMINAL:  # binley: the review dev server ends with the review
         proc.stop_port(port(job, 1))
@@ -836,11 +943,15 @@ def cmd_merge(job):
         if gh_json("pr", "view", str(job["pr"]), "--json", "isDraft")["isDraft"]:
             gh("pr", "ready", str(job["pr"]))
         ci_failure = wait_for_ci(job)
-        if ci_failure:
+        if ci_failure and ci_failure != CI_NOT_STARTED:
             return fail(ci_failure)
-        merge_when_allowed(job)
+        if not ci_failure:
+            merge_when_allowed(job)
     except Refused as e:
         return fail(f"The merge failed:\n\n```\n{e}\n```")
+    if ci_failure:  # never started, not the change's fault: hold the job here for `job retry`.
+        # Outside the try: a GitHub error while stopping must not become a merge failure.
+        return cmd_stop(job, CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]))
     # GitHub may already have deleted the branch on merge.
     run(["git", "push", "origin", "--delete", job["branch"]], check=False)
     save(advance(sync(job), "merged"))
@@ -851,11 +962,66 @@ def wait_for_ci(job, settle=20):
     """binley: main's ruleset requires CI, so wait for the PR's checks after the
     push. None when they pass or the PR has none, else the reason."""
     time.sleep(settle)  # let GitHub register the checks for the commit just pushed
-    res = run(["gh", "pr", "checks", str(job["pr"]), "--watch", "--fail-fast", "--interval", "20"], check=False)
+    stale = pr_checks(job)
+    if never_started(stale):  # GitHub never retries these itself, and an unchanged commit starts nothing new
+        for run_id in sorted({CI_LINK.search(c["link"])[1] for c in stale if c["bucket"] == "fail"}):
+            run([*GH, "run", "rerun", run_id, "--failed"], check=False)
+        time.sleep(settle)
+    res = run([*GH, "pr", "checks", str(job["pr"]), "--watch", "--fail-fast", "--interval", "20"], check=False)
     out = (res.stdout + res.stderr).strip()
-    if res.returncode == 0 or "no checks reported" in out:
+    if "no checks reported" in out:
         return None
+    checks = pr_checks(job)
+    if res.returncode == 0:
+        cancelled = [c["name"] for c in checks if c["bucket"] == "cancel"]  # `gh` exits 0 for these
+        return f"CI was cancelled on PR #{job['pr']}: {', '.join(cancelled)}" if cancelled else None
+    if never_started(checks):
+        return CI_NOT_STARTED
     return f"CI didn't pass on PR #{job['pr']}:\n\n```\n{out[-3000:]}\n```"
+
+
+# `run` ends the run when it sees "CI never started": nothing else should try to merge.
+CI_NOT_STARTED = ("CI never started on PR #{pr}: GitHub did not run its jobs. That is usually a billing or quota "
+                  "problem on the account (\"The job was not started because recent account payments have failed\"), "
+                  "not a problem with the change. Fix the account, then `job retry {id}` re-runs CI and merges it "
+                  "(re-run the workflow on GitHub first if the token cannot).")
+CI_LINK = re.compile(r"/actions/runs/(\d+)/job/(\d+)")  # only GitHub Actions checks have one
+
+
+def pr_checks(job):
+    res = run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False)
+    found = json_or_none(res.stdout)
+    return found if isinstance(found, list) else []
+
+
+def json_or_none(text):
+    """What `gh` printed, or None when it printed an error instead."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def never_started(checks):
+    """True when GitHub never ran any of the failed checks. A check we can't ask about
+    counts as a real failure."""
+    failed = [c for c in checks if c["bucket"] == "fail"]
+    return bool(failed) and all(job_never_ran(c.get("link") or "") for c in failed)
+
+
+def job_never_ran(link):
+    """A job that never started has no steps and no runner, though it still has a start, an end
+    and a few seconds' duration. Read through the Actions API: a fine-grained token cannot
+    read check-run annotations."""
+    found = CI_LINK.search(link)
+    if not found:
+        return False
+    res = run([*GH, "api", f"repos/{{owner}}/{{repo}}/actions/jobs/{found[2]}"], check=False)
+    ran = json_or_none(res.stdout)
+    if res.returncode != 0 or not isinstance(ran, dict):
+        print(f"could not read CI job {found[2]} (does the token have Actions: read?)", file=sys.stderr)
+        return False
+    return ran.get("conclusion") == "failure" and not ran.get("steps") and not ran.get("runner_name")
 
 
 def merge_when_allowed(job, tries=10, pause=30):
@@ -885,6 +1051,8 @@ def cmd_feedback(job, text, who=None, keep_budget=False):
     job = advance(sync(job), "build")
     if keep_budget:  # not a person's feedback, so no fresh round budget
         job["round_limit"] = limit
+    else:  # a person has spoken: their earlier hold is answered
+        job.pop("held", None)
     save(job)
     print(f"{job['id']}: feedback-{k}.md, round {job['round']}")
 
@@ -939,14 +1107,53 @@ def cmd_pr_feedback(job):
         return cmd_feedback(job, text + ("\n\nInline comments:\n" + "\n".join(lines) if lines else ""),
                             who="a review on the pull request")
     if job["round"] < job["round_limit"] and job.get("ci_feedback_sha") != pr["headRefOid"]:
-        res = run([*GH, "pr", "checks", str(job["pr"]), "--json", "name,bucket,link"], check=False)
-        failed = [c for c in json.loads(res.stdout or "[]") if c["bucket"] == "fail"]
+        checks = pr_checks(job)
+        failed = [c for c in checks if c["bucket"] == "fail"]
+        if never_started(checks):  # not the change's fault, so no build round
+            return print(f"{job['id']}: " + CI_NOT_STARTED.format(pr=job["pr"], id=job["id"]).split(" Fix")[0])
         if failed:
             job["ci_feedback_sha"] = pr["headRefOid"]
             return cmd_feedback(job, "CI failed on the pull request. Fix the cause, not the check.\n\n"
                                 + "\n".join(f"- {c['name']}: {c['link']}" for c in failed),
                                 who="CI on the pull request", keep_budget=True)
     print(f"{job['id']}: nothing")
+
+
+def cmd_merge_main(job, tries=3, pause=5):
+    """E5.4 and E5.5: a PR that conflicts with the base goes back to the builder to merge it, whether the
+    job waits for a person or its reviews are still running. Once per pushed commit, inside the round
+    budget. Prints `nothing` otherwise."""
+    # A job a limit or a safety check stopped (`stopped_in`) is left for a person to look at.
+    if job["stage"] not in {"review", "needs-human"} or not job["pr"] or job.get("stopped_in"):
+        return print(f"{job['id']}: nothing")
+    for attempt in range(tries):
+        pr = gh_json("pr", "view", str(job["pr"]), "--json", "state,mergeable,headRefOid")
+        if pr.get("mergeable") != "UNKNOWN":  # GitHub works it out in the background after the base moves
+            break
+        if attempt < tries - 1:
+            time.sleep(pause)
+    head = pr.get("headRefOid")
+    if (pr.get("state") != "OPEN" or pr.get("mergeable") != "CONFLICTING"
+            or job.get("conflict_sha") == head or job["round"] >= job["round_limit"]):
+        return print(f"{job['id']}: nothing")
+    git(job, "fetch", "origin", BASE)  # the builder merges origin/<base> and has no token to fetch it with
+    d = job_dir(job["id"])
+    k = len(list(d.glob("feedback-*.md"))) + 1
+    (d / f"feedback-{k}.md").write_text(
+        f"# Feedback {k}\n\nFrom the factory: the pull request conflicts with {BASE}.\n\nRun `git merge origin/{BASE}`, "
+        f"resolve the conflicts keeping both sides' intent, and commit the merge. Change nothing else.\n")
+    job["conflict_sha"] = head
+    if job["stage"] == "needs-human":
+        limit = job["round_limit"]
+        job = advance(sync(job), "build")
+        job["round_limit"] = limit  # not a person's feedback, so no fresh round budget
+        job["held"] = True  # it was waiting for a person, so it still waits for one: never merged unattended
+    else:  # in review: the reviews would be of a branch that cannot merge, so they are dropped
+        proc.stop_port(port(job, 1))
+        next_round(job)
+        job["stage"] = "build"
+    save(job)
+    print(f"{job['id']}: merge-main round {job['round']}: PR #{job['pr']} conflicts with {BASE}")
 
 
 def cmd_reject(job, text):
@@ -1010,6 +1217,8 @@ def main(argv):
             cmd_stop(sync(resolve(args[0])), sys.stdin.read())
         elif cmd == "retry" and len(args) == 1:
             cmd_retry(resolve(args[0]))
+        elif cmd == "merge-main" and len(args) == 1:
+            cmd_merge_main(resolve(args[0]))
         elif cmd == "pr-feedback" and len(args) == 1:
             cmd_pr_feedback(resolve(args[0]))
         elif cmd == "agents" and len(args) == 2:

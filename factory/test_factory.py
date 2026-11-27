@@ -7,6 +7,7 @@ Needs `npm ci` done (for the dev server check) and no GitHub access. About a min
 import importlib.machinery
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -314,7 +315,10 @@ def test_merge_waits_for_ci():  # main requires CI, so job merge must wait for i
     try:
         job.run = fake_run(0, "checks\tpass\nsemgrep\tpass\n")
         assert job.wait_for_ci(j, settle=0) is None
-        assert calls[-1][:4] == ["gh", "pr", "checks", "9"] and "--watch" in calls[-1]
+        watched = [c for c in calls if "--watch" in c]
+        assert watched and watched[-1][-6:-3] == ["checks", "9", "--watch"], calls
+        job.run = fake_run(0, '[{"name": "tests", "bucket": "cancel", "link": ""}]')
+        assert "CI was cancelled on PR #9" in job.wait_for_ci(j, settle=0)
         job.run = fake_run(1, "checks\tfail\n")
         assert "CI didn't pass on PR #9" in job.wait_for_ci(j, settle=0)
         job.run = fake_run(1, "no checks reported on the 'factory/009-ci' branch")
@@ -343,6 +347,22 @@ def test_merge_waits_for_ci():  # main requires CI, so job merge must wait for i
             pass
     finally:
         job.run = REAL_RUN
+
+
+def test_posted_text_is_scrubbed():
+    os.environ["GH_TOKEN"] = "plain-secret-value"
+    try:
+        out = job.publishable({"worktree": "/w/001-x"}, "plain-secret-value ghp_abcdefgh12345678 /w/001-x/a.ts @team", 500)
+    finally:
+        del os.environ["GH_TOKEN"]
+    assert out == "[secret] [secret] ./a.ts @\u200bteam", out
+    assert job.publishable({}, "x" * 20, 5) == "[cut]\nxxxxx"
+    wt = {"worktree": "E:/work/001-x"}
+    for printed in ["/e/work/001-x/a.ts", "e:/Work/001-x/a.ts", "E:\\\\work\\\\001-x/a.ts", "/mnt/e/work/001-x/a.ts"]:
+        assert job.publishable(wt, printed, 500) == "./a.ts", (printed, job.publishable(wt, printed, 500))
+    assert job.publishable({}, "D:\\Users\\someone\\x /home/other/y", 500) == "D:\\Users\\[user]\\x /home/[user]/y"
+    assert job.publishable({}, "a\x00b\x1bc\td", 500) == "abc\td"
+    assert job.fenced("~~~~~\nout").startswith("~~~~~~\n")
 
 
 def test_no_hand_merge_hook():
