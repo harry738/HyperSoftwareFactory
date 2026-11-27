@@ -623,8 +623,13 @@ async function start() {
     if (list.length) projects = list
   } catch { /* no hub: the one board */ }
   pickProject()
-  poll()
-  setInterval(poll, POLL_MS)
+  // Schedule the next poll only after this one has finished, so a slow load never
+  // starts a render that supersedes the one before it.
+  const pollLoop = async () => {
+    await poll()
+    setTimeout(pollLoop, POLL_MS)
+  }
+  pollLoop()
   // factory/VERSION, served beside this page by both servers.
   fetchFirst('VERSION').then((v) => { if (v) $('version').textContent = `v${v}` })
 }
