@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 # Gemini 12-week plan × HyperSoftwareFactory v6.4 — integration analysis
 
 Local proposal only. Nothing was pushed or committed to GitHub. The two planning documents were copied out as Markdown; the source originals were left in place and were not modified or deleted.
