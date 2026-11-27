@@ -90,12 +90,12 @@ The diagram groups the main stages. The scripts enforce the detailed transitions
 
 ### 1. Install into a project
 
-Copy `factory/` and `.claude/` into the target repository, then configure the project before running jobs:
+Copy `factory/` and `.claude/` into the target repository, then configure the project before running jobs. The root `.gitignore` is not copied, so add `factory/jobs/` and `.worktrees/` to the target repository's `.gitignore` yourself; otherwise job state and worktrees can show up as untracked files and be swept into a broad `git add`.
 
 | Configure | What to do |
 | :--- | :--- |
 | [`factory/checks.sh`](factory/checks.sh) | Add the project's tests, lint and build. The template deliberately fails until configured. |
-| [`factory/config.json`](factory/config.json) | Set protected paths, models, prices and the review dev-server command. `{port}` is filled in per job. Next.js is the default; remove `dev_server` if there are no pages. |
+| [`factory/config.json`](factory/config.json) | Set `base_branch` to the target repository's default branch (`main` here; a repository on `master` must change it, or jobs cannot create their worktree). Also set protected paths, models, prices and the review dev-server command. `{port}` is filled in per job. Next.js is the default; remove `dev_server` if there are no pages. |
 | `AGENTS.md` or `CLAUDE.md` in the target repo | Describe the project, its scope, commands and conventions for intake and the other agents. |
 | Merge policy and Git authentication | Decide who merges and authenticate Git for the checkout. Fresh installs do not include Binley's unattended-merge permission rule. |
 
@@ -109,7 +109,7 @@ Label an open GitHub issue `factory`, then invoke the project's Claude Code skil
 /factory run
 ```
 
-This runs every eligible labelled issue through the pipeline. `/factory run <issue-number>` runs one issue.
+This runs every eligible labelled issue through the pipeline. `/factory run <issue-number>` runs one issue. Before it starts, `/factory run` also adds the `factory` label to any open issue labelled `ready-for-agent` with no open blockers, so those issues can start in the same run. Tell people this before they run the command.
 
 ### 3. Follow the work
 
