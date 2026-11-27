@@ -741,9 +741,11 @@ async function refreshDrawer(gen = drawerGen) {
   }).join('') || '<div class="empty">No files yet.</div>'
   if (focusedFile) [...$('d-files').querySelectorAll('[data-file]')].find((b) => b.dataset.file === focusedFile)?.focus()
 
+  const focusedDocLink = document.activeElement?.closest?.('#d-doc a')?.getAttribute('href')
   if (text !== openText) {
     openText = text
     $('d-doc').innerHTML = text === null ? '<p class="note">Intake hasn’t written anything yet.</p>' : markdown(text)
+    if (focusedDocLink !== undefined) ([...$('d-doc').querySelectorAll('a')].find((x) => x.getAttribute('href') === focusedDocLink) || $('d-doc').closest('.drawer').querySelector('.close'))?.focus()
   }
 }
 
