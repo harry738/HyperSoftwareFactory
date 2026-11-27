@@ -129,6 +129,8 @@ python -m http.server --bind 127.0.0.1 8000
 # Open http://localhost:8000/dashboard.html
 ```
 
+The dashboard follows the brand system (navy grid, mint for verified, periwinkle for stages, amber only for a human handoff). It puts jobs that wait on you at the top, its totals filter the board (running, needs you, merged), a search box matches titles and job ids, and a button refreshes it between the 2-second polls. The footer shows the version in `factory/VERSION`.
+
 The older registry-based multi-project dashboard is available via `python scripts/factory-dashboard.py`, configured with local project paths in `config/projects.yaml`. CI runs the same `scripts/test.sh` entry point; Windows-specific tests are skipped on other systems. Central runner integration tests use stand-ins.
 
 ## Roadmap

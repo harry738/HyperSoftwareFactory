@@ -3,263 +3,284 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Software Factory</title>
+<title>HyperSoftwareFactory</title>
 <style>
+  /* Brand tokens: docs/brand/README.md. No red, gradients or glow; colour always has a text label. */
   :root {
-    --bg: #14151b;
-    --panel: #1a1c24;
-    --card: #20222c;
-    --card-hover: #252835;
-    --line: #2b2e3b;
-    --text: #e4e5ea;
-    --muted: #868ba0;
-    --faint: #5b6075;
-    --active: #8be9fd;
-    --pass: #50fa7b;
-    --changes: #ffb86c;
-    --human: #ff5555;
-    --merged: #bd93f9;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --bg: #0b1220;
+    --raised: #142238;
+    --panel: #1c3048;
+    --panel-hover: #22395a;
+    --verified: #102e2b;
+    --grid: #162338;
+    --line: #31415b;
+    --connector: #466080;
+    --mint: #54e0b1;
+    --peri: #8eabff;
+    --amber: #f5b14c;
+    --text: #edf3fc;
+    --text2: #b8c6d9;
+    --muted: #91abc7;
+    --px: "Press Start 2P", "Pixelify Sans", "Lucida Console", Consolas, monospace;
+    --mono: Consolas, "Lucida Console", ui-monospace, monospace;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body {
-    background: var(--bg);
-    color: var(--text);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
-    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; display: flex; flex-direction: column;
+    background-color: var(--bg); color: var(--text);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    font: 14px/1.5 Arial, Helvetica, sans-serif;
   }
-  button { font: inherit; color: inherit; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+  .px { font-family: var(--px); font-weight: 400; letter-spacing: .06em; }
+  .mono { font-family: var(--mono); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
   /* Header */
   header {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
-    flex-wrap: wrap; padding: 28px 32px 8px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    padding: 18px 32px; border-bottom: 1px solid var(--line); background: var(--bg);
   }
-  h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
-  .status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-  .status .dot {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--pass); margin-right: 6px; vertical-align: 1px;
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand h1 { margin: 0; font-size: 14px; line-height: 1.4; letter-spacing: .04em; }
+  .brand h1 span { color: var(--mint); }
+  .picker { display: flex; align-items: center; gap: 10px; }
+  .picker[hidden] { display: none; }
+  .picker label { font-size: 9px; letter-spacing: .1em; color: var(--muted); }
+  .project {
+    appearance: none; -webkit-appearance: none; height: 44px; min-width: 260px; padding: 0 40px 0 14px; cursor: pointer;
+    background: var(--raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' shape-rendering='crispEdges'%3E%3Cpath fill='%238eabff' d='M0 0h10v2H8v2H6v2H4V4H2V2H0z'/%3E%3C/svg%3E") no-repeat right 14px center;
+    border: 1px solid var(--line); border-top: 2px solid var(--peri); color: var(--text); font-family: var(--mono); font-size: 13px;
   }
-  .status.error { color: var(--human); }
-  .status.error .dot { background: var(--human); }
-  .banner {
-    margin: 12px 32px 0; padding: 10px 14px; border: 1px solid var(--human);
-    border-radius: 8px; color: var(--human); font-family: var(--mono); font-size: 12px;
+  .project:hover { border-color: var(--peri); }
+  .project option { background: var(--raised); color: var(--text); }
+  .others { font-family: var(--mono); font-size: 11px; color: var(--bg); background: var(--amber); padding: 2px 6px; }
+  .others:empty { display: none; }
+  .status {
+    margin-left: auto; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;
+    border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--muted);
   }
+  .status .dot { background: var(--mint); }
+  .status.error { color: var(--peri); border-color: var(--peri); }
+  .status.error .dot { background: var(--peri); }
+  .refresh {
+    width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--line); color: var(--text2); cursor: pointer;
+  }
+  .refresh:hover { border-color: var(--peri); color: var(--text); }
+  .refresh[aria-busy="true"] { color: var(--peri); border-color: var(--peri); }
 
-  /* Project tabs (only under scripts/factory-dashboard.py) */
-  .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 32px 0; }
-  .tabs:empty { display: none; }
-  .tab {
-    display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 8px;
-    border: 1px solid var(--line); color: var(--muted); text-decoration: none; font-size: 13px;
+  main { flex: 1; display: flex; flex-direction: column; gap: 24px; padding: 28px 32px 40px; min-width: 0; }
+  .banner {
+    padding: 12px 16px; border: 1px solid var(--peri); background: var(--raised);
+    color: var(--text); font-family: var(--mono); font-size: 13px;
   }
-  .tab:hover { color: var(--text); border-color: var(--muted); }
-  .tab:focus-visible { outline: 2px solid var(--active); outline-offset: 2px; }
-  .tab[aria-current] { background: var(--card); color: var(--text); border-color: var(--muted); }
-  .tab span { font-family: var(--mono); font-size: 11px; color: var(--faint); }
-  .tab .run { color: var(--active); }
-  .tab .yours { color: var(--human); }
+  .banner::before { content: "PROBLEM  "; font-family: var(--px); font-size: 9px; color: var(--peri); }
+  #banner:empty { display: none; }
+  #banner { display: flex; flex-direction: column; gap: 8px; }
+
+  /* Waiting on you */
+  .attn {
+    background: var(--raised); border: 1px solid var(--amber); border-top: 2px solid var(--amber);
+    padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .attn:empty { display: none; }
+  .attn-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 15px; }
+  .tag { font-family: var(--px); font-size: 9px; letter-spacing: .06em; padding: 5px 7px; white-space: nowrap; }
+  .tag.human { background: var(--amber); color: var(--bg); }
+  .attn-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+  .attn-row .t { flex: 1 1 240px; font-size: 15px; }
+  .attn-row .h { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+  .btn {
+    height: 44px; padding: 0 16px; cursor: pointer; background: transparent; color: var(--text);
+    border: 1px solid var(--peri); font-family: var(--px); font-size: 10px; letter-spacing: .06em;
+  }
+  .btn:hover { border-color: var(--text); }
+
+  /* Totals that double as filters */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .kpi {
+    display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer;
+    background: var(--raised); border: 1px solid var(--line); border-top: 2px solid var(--connector); padding: 18px 20px;
+  }
+  .kpi:hover { background: var(--panel); }
+  .kpi[aria-pressed="true"] { background: var(--panel); border-color: var(--peri); }
+  .kpi.amber { border-top-color: var(--amber); } .kpi.amber[aria-pressed="true"] { border-color: var(--amber); }
+  .kpi.mint { border-top-color: var(--mint); } .kpi.mint[aria-pressed="true"] { border-color: var(--mint); background: var(--verified); }
+  .kpi .l { font-family: var(--px); font-size: 9px; letter-spacing: .1em; color: var(--muted); }
+  .kpi .v { display: flex; align-items: baseline; gap: 10px; }
+  .kpi .n { font-size: 36px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 13px; color: var(--text2); }
+
+  /* Toolbar */
+  .toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .search-box { position: relative; flex: 1 1 280px; max-width: 420px; }
+  .search-box svg { position: absolute; left: 14px; top: 14px; }
+  .search {
+    width: 100%; height: 44px; padding: 0 14px 0 40px; font-size: 14px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  }
+  .search::placeholder { color: var(--muted); }
+  .showing { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .cmds { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .cmds span { border: 1px solid var(--line); padding: 6px 10px; }
 
   /* Board */
-  .board {
-    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px;
-    padding: 20px 32px 40px; align-items: start;
-  }
-  .col { min-width: 0; }
-  .col-head {
-    display: flex; align-items: center; gap: 8px; padding: 0 2px 10px;
-    border-bottom: 1px solid var(--line); margin-bottom: 12px; position: relative;
-  }
-  .col-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
-  .col-head .who { font-size: 11px; color: var(--faint); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .board-wrap { overflow-x: auto; padding-bottom: 8px; }
+  .board { display: grid; grid-template-columns: repeat(7, minmax(210px, 1fr)); gap: 16px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .col-head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+  .col-head > div { display: flex; align-items: center; gap: 8px; }
+  .col-head h2 { margin: 0; font-size: 10px; letter-spacing: .08em; }
   .col-head .count {
-    margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--text2);
+    background: var(--raised); border: 1px solid var(--line); min-width: 24px; text-align: center; padding: 1px 6px;
   }
-  .col:not(:last-child):not(:nth-last-child(2)) .col-head::after {
-    content: "›"; position: absolute; right: -10px; top: -2px; color: var(--faint); font-size: 16px;
-  }
-  .col.human .col-head { border-bottom-color: color-mix(in srgb, var(--human) 55%, transparent); }
-  .col.human h2 { color: var(--human); }
-  .col.merged-col h2 { color: var(--merged); }
-  .empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
+  .col-head .who { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .col.human .col-head { border-bottom-color: var(--amber); }
+  .col.human h2 { color: var(--amber); }
+  .col.done-col h2 { color: var(--mint); }
+  .empty { border: 1px dashed var(--line); padding: 18px; text-align: center; font-size: 12px; color: var(--muted); }
 
   /* Cards */
   .card {
-    display: block; width: 100%; text-align: left; cursor: pointer; color: inherit;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 12px 10px; margin-bottom: 10px;
-    transition: background .15s, border-color .15s, transform .15s;
+    display: flex; flex-direction: column; gap: 10px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--peri); padding: 14px;
+    transition: background .15s, border-color .15s;
   }
-  .card:hover { background: var(--card-hover); transform: translateY(-1px); }
-  .card:focus-visible { outline: 2px solid var(--active); outline-offset: 2px; }
-  .card.live { border-color: color-mix(in srgb, var(--active) 35%, var(--line)); }
-  .card.human {
-    border-color: var(--human);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--human) 40%, transparent),
-                0 8px 24px -12px color-mix(in srgb, var(--human) 60%, transparent);
-  }
-  .card.done { opacity: .72; }
-  .card.rejected .feature { text-decoration: line-through; text-decoration-color: var(--faint); }
-  .flag.wait { color: var(--changes); }
-  .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  .num { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .card:hover { background: var(--panel-hover); border-color: var(--connector); }
+  .card.idle { background: var(--raised); border-top-color: var(--connector); }
+  .card.human { background: var(--raised); border-color: var(--amber); border-top-color: var(--amber); }
+  .card.merged { background: var(--verified); border-top-color: var(--mint); }
+  .card.rejected { background: var(--raised); border-top-color: var(--line); opacity: .8; }
+  .card.rejected .feature { text-decoration: line-through; text-decoration-color: var(--muted); }
+  .card-top { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--muted); min-width: 0; }
   .card-top .num { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pulse {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--active);
-    animation: pulse 1.6s ease-in-out infinite;
-  }
-  .flag {
-    margin-left: auto; font-size: 10px; font-weight: 600; letter-spacing: .06em;
-    text-transform: uppercase; color: var(--human); white-space: nowrap;
-  }
-  .feature { font-size: 13px; line-height: 1.4; margin: 0 0 6px; }
-  .links { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; }
-  .links a { color: var(--active); text-decoration: none; }
-  .links a:hover { text-decoration: underline; }
-  .meta { display: flex; gap: 10px; margin-top: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
-  .meta .risk-high { color: var(--human); } .meta .risk-medium { color: var(--changes); }
-  .chip.gate { flex: 0 0 38px; }
-  .chip.FAIL { border: 1px solid transparent; color: var(--human); background: color-mix(in srgb, var(--human) 16%, transparent); }
-  .branch {
-    font-family: var(--mono); font-size: 11px; color: var(--faint);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .rounds { margin-top: 10px; display: grid; gap: 5px; }
+  .dot { width: 8px; height: 8px; flex: none; background: var(--connector); }
+  .dot.live { background: var(--peri); animation: blink 1.2s steps(2, start) infinite; }
+  .dot.human { background: var(--amber); } .dot.merged { background: var(--mint); }
+  .flag { margin-left: auto; font-family: var(--px); font-size: 8px; padding: 3px 5px; white-space: nowrap; border: 1px solid var(--connector); color: var(--muted); }
+  .flag.human { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  .flag.info { border-color: var(--peri); color: var(--peri); }
+  .flag.mint { background: var(--mint); border-color: var(--mint); color: var(--bg); }
+  .feature { margin: 0; font-size: 15px; line-height: 1.4; }
+  .links { display: flex; gap: 12px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .links a { color: var(--peri); text-decoration: none; }
+  .links a:hover { color: var(--text); text-decoration: underline; }
+  .rounds { display: grid; gap: 5px; }
   .round { display: flex; align-items: center; gap: 4px; }
-  .round .r { font-family: var(--mono); font-size: 10px; color: var(--faint); width: 20px; }
+  .round .r { font-family: var(--mono); font-size: 10px; color: var(--muted); width: 22px; }
   .chip {
-    flex: 1; text-align: center; font-family: var(--mono); font-size: 10px;
-    padding: 2px 0; border-radius: 4px; border: 1px dashed var(--faint); color: var(--faint);
+    flex: 1; text-align: center; font-family: var(--mono); font-size: 11px;
+    padding: 2px 0; border: 1px dashed var(--connector); color: var(--muted);
   }
+  .chip.gate { flex: 0 0 40px; }
   .chip.wait { animation: breathe 1.6s ease-in-out infinite; }
-  .chip.PASS {
-    border: 1px solid transparent; color: var(--pass);
-    background: color-mix(in srgb, var(--pass) 14%, transparent);
-  }
-  .chip.CHANGES {
-    border: 1px solid transparent; color: var(--changes);
-    background: color-mix(in srgb, var(--changes) 16%, transparent);
-  }
-  .chip.bad { border: 1px solid var(--human); color: var(--human); }
+  .chip.PASS { border: 1px solid var(--verified); background: var(--verified); color: var(--mint); }
+  .chip.CHANGES { border: 1px solid var(--peri); color: var(--peri); }
+  .chip.FAIL { border: 1px solid var(--peri); background: var(--panel-hover); color: var(--text); }
+  .chip.bad { border: 1px solid var(--amber); color: var(--amber); }
+  .meta { display: flex; gap: 12px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .meta .risk-high { color: var(--amber); } .meta .risk-medium { color: var(--text2); }
   .hint {
-    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line);
-    font-family: var(--mono); font-size: 10.5px; color: var(--muted); line-height: 1.6;
-    overflow-wrap: anywhere;
+    padding-top: 8px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px; color: var(--text2); line-height: 1.6; overflow-wrap: anywhere;
   }
 
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @keyframes blink { to { visibility: hidden; } }
   @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-  @media (prefers-reduced-motion: reduce) { .pulse, .chip.wait { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .dot.live, .chip.wait { animation: none; } .card, .scrim, .drawer { transition: none; } }
+
+  footer {
+    display: flex; gap: 20px; flex-wrap: wrap; padding: 16px 32px;
+    border-top: 1px solid var(--line); background: var(--bg);
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
 
   /* Drawer */
   .scrim {
-    position: fixed; inset: 0; background: rgba(5, 6, 10, .55);
+    position: fixed; inset: 0; background: rgba(5, 9, 18, .72);
     opacity: 0; pointer-events: none; transition: opacity .2s;
   }
   .drawer {
-    position: fixed; top: 0; right: 0; bottom: 0; width: min(920px, 100vw);
-    background: var(--panel); border-left: 1px solid var(--line);
-    display: grid; grid-template-rows: auto 1fr; transform: translateX(100%);
-    transition: transform .25s ease;
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(960px, 100vw);
+    background: #0f1a2c; border-left: 1px solid var(--line);
+    display: grid; grid-template-rows: auto 1fr; transform: translateX(100%); visibility: hidden;
+    transition: transform .25s ease, visibility .25s;
   }
   .open .scrim { opacity: 1; pointer-events: auto; }
-  .open .drawer { transform: none; }
-  .d-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--line); position: relative; }
-  .d-head .num { font-size: 12px; }
-  .d-head h3 { margin: 4px 40px 6px 0; font-size: 16px; font-weight: 600; line-height: 1.35; }
+  .open .drawer { transform: none; visibility: visible; }
+  .d-head { padding: 22px 28px 18px; border-bottom: 1px solid var(--line); border-top: 2px solid var(--peri); position: relative; }
+  .d-head.human { border-top-color: var(--amber); }
+  .d-head.merged { border-top-color: var(--mint); }
+  .d-head .num { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .d-head h3 { margin: 8px 56px 10px 0; font-size: 22px; line-height: 1.3; }
   .close {
-    position: absolute; top: 16px; right: 16px; width: 32px; height: 32px;
-    border-radius: 8px; border: 1px solid var(--line); background: none; cursor: pointer;
-    color: var(--muted); font-size: 18px; line-height: 1;
+    position: absolute; top: 16px; right: 20px; width: 44px; height: 44px; cursor: pointer;
+    border: 1px solid var(--line); background: none; color: var(--text2); font-size: 20px; line-height: 1;
   }
-  .close:hover { color: var(--text); border-color: var(--muted); }
-  .d-body { display: grid; grid-template-columns: 200px 1fr; min-height: 0; }
+  .close:hover { color: var(--text); border-color: var(--text); }
+  .d-body { display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
   .files { border-right: 1px solid var(--line); padding: 14px 10px; overflow-y: auto; }
-  .files .group {
-    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-    color: var(--faint); margin: 12px 8px 4px;
-  }
-  .files .group:first-child { margin-top: 0; }
+  .files .group { font-family: var(--px); font-size: 8px; letter-spacing: .1em; color: var(--muted); padding: 14px 10px 6px; }
+  .files .group:first-child { padding-top: 0; }
   .file {
-    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-    background: none; border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer;
-    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; text-align: left;
+    background: none; border: 0; padding: 8px 10px; cursor: pointer;
+    font-family: var(--mono); font-size: 13px; color: var(--text2);
   }
-  .file:hover { background: var(--card); color: var(--text); }
-  .file.on { background: var(--card-hover); color: var(--text); }
+  .file:hover { background: var(--panel); color: var(--text); }
+  .file.on { background: var(--panel); color: var(--text); box-shadow: inset 2px 0 0 var(--peri); }
   .file .rn { display: none; }
-  .file .v { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
-  .v.good { background: var(--pass); } .v.warn { background: var(--changes); } .v.stop { background: var(--human); }
-  .doc { overflow-y: auto; padding: 22px 28px 60px; min-width: 0; }
+  .file .v { width: 8px; height: 8px; flex: none; background: var(--connector); }
+  .v.good { background: var(--mint); } .v.warn { background: var(--peri); } .v.stop { background: var(--amber); }
+  .doc { overflow-y: auto; padding: 26px 32px 60px; min-width: 0; }
 
   /* Rendered markdown */
-  .md { max-width: 680px; line-height: 1.65; }
-  .md h1, .md h2, .md h3, .md h4 { line-height: 1.3; margin: 1.6em 0 .5em; }
-  .md h1 { font-size: 20px; } .md h2 { font-size: 15px; } .md h3 { font-size: 14px; color: var(--muted); }
+  .md { max-width: 680px; line-height: 1.65; color: var(--text2); font-size: 15px; }
+  .md h1, .md h2, .md h3, .md h4 { line-height: 1.3; margin: 1.6em 0 .5em; color: var(--text); }
+  .md h1 { font-size: 20px; } .md h2 { font-size: 16px; } .md h3 { font-size: 15px; color: var(--text2); }
   .md > :first-child { margin-top: 0; }
   .md p, .md ul, .md ol, .md blockquote, .md pre, .md table { margin: 0 0 .9em; }
   .md ul, .md ol { padding-left: 1.3em; }
   .md li { margin: .2em 0; }
   .md li.task { list-style: none; margin-left: -1.3em; }
-  .md li.task::before { content: "☐"; margin-right: .5em; color: var(--faint); }
-  .md li.task.done::before { content: "☑"; color: var(--pass); }
-  .md code {
-    font-family: var(--mono); font-size: 12px; background: var(--card);
-    padding: 1px 5px; border-radius: 4px;
-  }
-  .md pre {
-    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px 14px; overflow-x: auto;
-  }
+  .md li.task::before { content: "[ ]"; font-family: var(--mono); margin-right: .5em; color: var(--muted); }
+  .md li.task.done::before { content: "[x]"; color: var(--mint); }
+  .md strong { color: var(--text); }
+  .md code { font-family: var(--mono); font-size: 13px; background: var(--raised); padding: 1px 5px; }
+  .md pre { background: var(--bg); border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto; }
   .md pre code { background: none; padding: 0; }
   .md blockquote { border-left: 2px solid var(--line); padding-left: 12px; color: var(--muted); }
-  .md a { color: var(--active); }
+  .md a { color: var(--peri); }
   .md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
   .md th, .md td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; }
-  .verdict {
-    display: inline-block; font-family: var(--mono); font-size: 12px; font-weight: 600;
-    padding: 4px 10px; border-radius: 6px; margin-bottom: 14px;
-  }
+  .md th { color: var(--text); background: var(--raised); }
+  .verdict { display: inline-block; font-family: var(--px); font-size: 10px; letter-spacing: .06em; padding: 7px 10px; margin-bottom: 14px; }
   .verdict + * { margin-top: .4em; }
-  .md .head { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: -6px 0 14px; white-space: pre-line; }
-  .verdict.good { color: var(--pass); background: color-mix(in srgb, var(--pass) 14%, transparent); }
-  .verdict.warn { color: var(--changes); background: color-mix(in srgb, var(--changes) 16%, transparent); }
-  .verdict.stop { color: var(--human); background: color-mix(in srgb, var(--human) 16%, transparent); }
-  .note { color: var(--faint); font-size: 13px; }
+  .verdict.good { color: var(--mint); background: var(--verified); }
+  .verdict.warn { color: var(--peri); border: 1px solid var(--peri); }
+  .verdict.stop { color: var(--bg); background: var(--amber); }
+  .md .head { font-family: var(--mono); font-size: 13px; color: var(--muted); margin: -6px 0 14px; white-space: pre-line; }
+  .note { color: var(--muted); font-size: 14px; }
   .md .summary {
-    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px 16px 4px; margin: 0 0 22px;
+    background: var(--raised); border: 1px solid var(--line); border-top: 2px solid var(--peri);
+    padding: 14px 18px 4px; margin: 0 0 22px; color: var(--text);
   }
-  .md .summary h2 {
-    margin: 0 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: .08em; color: var(--muted);
-  }
+  .md .summary h2 { margin: 0 0 8px; font-family: var(--px); font-size: 9px; font-weight: 400; letter-spacing: .1em; color: var(--muted); }
   .md .summary ul { margin: 0 0 .6em; }
 
-  footer {
-    padding: 0 32px 32px; font-family: var(--mono); font-size: 11px; color: var(--faint);
-    display: flex; gap: 20px; flex-wrap: wrap;
-  }
-
-  @media (max-width: 1100px) {
-    .board { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 28px; }
-    .col-head::after { display: none; }
-  }
-  @media (max-width: 640px) {
-    header { padding: 20px 16px 4px; }
-    .banner { margin: 12px 16px 0; }
-    .tabs { padding: 12px 16px 0; }
-    .board { grid-template-columns: 1fr; padding: 16px 16px 32px; }
-    footer { padding: 0 16px 24px; }
+  @media (max-width: 760px) {
+    header, main, footer { padding-left: 16px; padding-right: 16px; }
+    .status { margin-left: 0; }
+    .board { grid-template-columns: 1fr; }
+    .cmds { margin-left: 0; }
     .d-head { padding: 16px; }
     .d-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    .files {
-      border-right: 0; border-bottom: 1px solid var(--line); display: flex; gap: 4px;
-      overflow-x: auto; padding: 8px;
-    }
+    .files { border-right: 0; border-bottom: 1px solid var(--line); display: flex; gap: 4px; overflow-x: auto; padding: 8px; }
     .files .group { display: none; }
     .file { width: auto; white-space: nowrap; }
     .file .rn { display: inline; white-space: pre; }
@@ -269,30 +290,53 @@
 </head>
 <body>
 <header>
-  <h1>Software factory</h1>
-  <div class="status" id="status">connecting…</div>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><g fill="#54e0b1"><rect x="3" y="3" width="10" height="1"/><rect x="3" y="12" width="10" height="1"/><rect x="3" y="3" width="1" height="10"/><rect x="12" y="3" width="1" height="10"/><rect x="5" y="1" width="1" height="1"/><rect x="8" y="1" width="1" height="1"/><rect x="11" y="1" width="1" height="1"/><rect x="5" y="14" width="1" height="1"/><rect x="8" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="1" y="5" width="1" height="1"/><rect x="1" y="8" width="1" height="1"/><rect x="1" y="11" width="1" height="1"/><rect x="14" y="5" width="1" height="1"/><rect x="14" y="8" width="1" height="1"/><rect x="14" y="11" width="1" height="1"/><rect x="5" y="8" width="1" height="1"/><rect x="6" y="9" width="1" height="1"/><rect x="7" y="8" width="1" height="1"/><rect x="8" y="7" width="1" height="1"/><rect x="9" y="6" width="1" height="1"/><rect x="10" y="5" width="1" height="1"/></g></svg>
+    <h1 class="px"><span>HYPER</span> SOFTWARE FACTORY</h1>
+  </div>
+  <div class="picker" id="picker" hidden>
+    <label for="project" class="px">PROJECT</label>
+    <select id="project" class="project"></select>
+    <span class="others" id="others"></span>
+  </div>
+  <div class="status" id="status" role="status"><span class="dot"></span>connecting…</div>
+  <button type="button" class="refresh" id="refresh" aria-label="Refresh now" title="Refresh now">
+    <svg width="16" height="16" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><g fill="currentColor"><rect x="5" y="2" width="6" height="1"/><rect x="3" y="3" width="2" height="1"/><rect x="11" y="3" width="2" height="1"/><rect x="2" y="4" width="1" height="2"/><rect x="2" y="6" width="1" height="4"/><rect x="3" y="10" width="1" height="2"/><rect x="4" y="12" width="2" height="1"/><rect x="6" y="13" width="4" height="1"/><rect x="10" y="12" width="2" height="1"/><rect x="12" y="10" width="1" height="2"/><rect x="11" y="1" width="1" height="5"/><rect x="12" y="5" width="3" height="1"/></g></svg>
+  </button>
 </header>
-<nav class="tabs" id="tabs" aria-label="Projects"></nav>
-<div id="banner"></div>
-<main class="board" id="board"></main>
+
+<main>
+  <div id="banner"></div>
+  <section class="attn" id="attn" aria-label="Waiting on you"></section>
+  <section class="kpis" id="kpis" aria-label="Filter jobs"></section>
+  <div class="toolbar">
+    <div class="search-box">
+      <label for="search" class="sr">Search jobs</label>
+      <svg width="16" height="16" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><g fill="#91abc7"><rect x="3" y="1" width="5" height="1"/><rect x="3" y="9" width="5" height="1"/><rect x="2" y="2" width="1" height="7"/><rect x="8" y="2" width="1" height="7"/><rect x="9" y="10" width="2" height="2"/><rect x="11" y="12" width="2" height="2"/></g></svg>
+      <input id="search" class="search" type="search" placeholder="Search by title or job id" autocomplete="off">
+    </div>
+    <span class="showing" id="showing"></span>
+    <div class="cmds"><span>/factory run</span><span>/factory run &lt;n&gt;</span><span>/factory &lt;anything&gt;</span></div>
+  </div>
+  <div class="board-wrap"><div class="board" id="board"></div></div>
+</main>
 <footer>
-  <span>/factory run</span>
-  <span>/factory run &lt;n&gt;</span>
-  <span>/factory &lt;anything&gt;</span>
   <span id="totals"></span>
+  <span>polled every 2s</span>
+  <span id="version" style="margin-left: auto"></span>
 </footer>
 
 <div id="overlay">
   <div class="scrim" data-close></div>
   <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="d-title">
-    <div class="d-head">
+    <div class="d-head" id="d-head">
       <div class="num" id="d-num"></div>
       <h3 id="d-title"></h3>
       <div class="links" id="d-links"></div>
       <button class="close" data-close aria-label="Close">×</button>
     </div>
     <div class="d-body">
-      <nav class="files" id="d-files"></nav>
+      <nav class="files" id="d-files" aria-label="Job files"></nav>
       <article class="doc"><div class="md" id="d-doc"></div></article>
     </div>
   </aside>
@@ -301,17 +345,25 @@
 <script>
 const POLL_MS = 2000
 const COLUMNS = [
-  { label: 'Intake', who: 'intake · fable', stages: ['intake', 'needs-info'] },
-  { label: 'Spec', who: 'spec-writer · opus', stages: ['spec'] },
-  { label: 'Build', who: 'builder · gate', stages: ['build', 'gate'] },
-  { label: 'Review', who: 'routed reviewers', stages: ['review'] },
-  { label: 'Approve', who: 'approver · merge', stages: ['approve', 'merging'] },
-  { label: 'Needs human', who: 'you', stages: ['needs-human'], cls: 'human' },
-  { label: 'Done', who: 'merged · rejected', stages: ['merged', 'rejected'], cls: 'merged-col' },
+  { label: 'INTAKE', who: 'intake · issue triage', stages: ['intake', 'needs-info'] },
+  { label: 'SPEC', who: 'spec-writer', stages: ['spec'] },
+  { label: 'BUILD', who: 'builder · gate', stages: ['build', 'gate'] },
+  { label: 'REVIEW', who: 'routed reviewers', stages: ['review'] },
+  { label: 'APPROVE', who: 'approver · merge', stages: ['approve', 'merging'] },
+  { label: 'NEEDS HUMAN', who: 'you', stages: ['needs-human'], cls: 'human' },
+  { label: 'DONE', who: 'merged · rejected', stages: ['merged', 'rejected'], cls: 'done-col' },
 ]
 const STAGES = new Set(COLUMNS.flatMap((c) => c.stages))
 const LIVE = new Set(['intake', 'spec', 'build', 'gate', 'review', 'approve', 'merging'])
+const DONE = new Set(['merged', 'rejected'])
 const SHORT = { code: 'code', ux: 'ux', ui: 'ui', security: 'sec' }
+// The totals double as filters; clicking the one that is on clears it.
+const FILTERS = {
+  all: () => true,
+  live: (j) => LIVE.has(j.stage),
+  human: (j) => j.stage === 'needs-human',
+  done: (j) => j.stage === 'merged',
+}
 
 const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
@@ -323,6 +375,8 @@ let projects = [{ slug: '', name: '', installed: true }]
 let current = projects[0]
 let jobs = []
 let lastRender = ''
+let filter = 'all'
+let query = ''
 const jobsDir = (p = current) => `${p.slug ? p.slug + '/' : ''}jobs/`
 const roundCache = new Map() // a finished round's directory -> its verdicts
 let openJobId = null
@@ -395,14 +449,16 @@ function links(job) {
   return out.join('')
 }
 
+const tint = (stage) => stage === 'needs-human' ? 'human' : stage === 'merged' ? 'merged' : stage === 'rejected' ? 'rejected' : LIVE.has(stage) ? '' : 'idle'
+
 function card(job, rounds) {
   const live = LIVE.has(job.stage)
   const human = job.stage === 'needs-human'
-  const done = job.stage === 'merged' || job.stage === 'rejected'
   const [num, ...slug] = job.id.split('-')
-  const flag = human ? '<span class="flag">your call</span>'
-    : job.stage === 'needs-info' ? '<span class="flag wait">asked author</span>'
-    : job.stage === 'rejected' ? '<span class="flag wait">rejected</span>' : ''
+  const flag = human ? '<span class="flag human">YOUR CALL</span>'
+    : job.stage === 'needs-info' ? '<span class="flag info">ASKED AUTHOR</span>'
+    : job.stage === 'rejected' ? '<span class="flag">REJECTED</span>'
+    : job.stage === 'merged' ? '<span class="flag mint">MERGED</span>' : ''
   const risk = job.intake?.risk
   const meta = [
     risk ? `<span class="risk-${esc(risk)}">${esc(risk)}</span>` : '',
@@ -410,10 +466,10 @@ function card(job, rounds) {
     `<span>${elapsed(job)}</span>`,
   ].join('')
   return `
-    <article class="card ${live ? 'live' : ''} ${human ? 'human' : ''} ${done ? 'done' : ''} ${job.stage}"
-             data-job="${esc(job.id)}" tabindex="0">
+    <article class="card ${tint(job.stage)}" data-job="${esc(job.id)}" tabindex="0"
+             aria-label="Open job ${esc(job.id)}: ${esc(job.title)}">
       <div class="card-top">
-        ${live ? '<span class="pulse" aria-label="running"></span>' : ''}
+        <span class="dot ${live ? 'live' : tint(job.stage)}" ${live ? 'aria-label="running"' : ''}></span>
         <span class="num">${esc(num)} · ${esc(slug.join('-'))}</span>
         ${flag}
       </div>
@@ -425,33 +481,75 @@ function card(job, rounds) {
     </article>`
 }
 
+function kpi(key, label, value, sub, cls = '', color = 'var(--text)') {
+  return `<button type="button" class="kpi ${cls}" data-filter="${key}" aria-pressed="${filter === key}">
+    <span class="l">${label}</span>
+    <span class="v"><span class="n" style="color:${color}">${value}</span><span class="s">${esc(sub)}</span></span>
+  </button>`
+}
+
+function attention(waiting) {
+  if (!waiting.length) return ''
+  const rows = waiting.map((j) => `
+    <div class="attn-row">
+      <span class="mono" style="color:var(--muted)">${esc(j.id.split('-')[0])}</span>
+      <span class="t">${esc(j.title)}</span>
+      <span class="h">${j.pr ? `merge PR #${j.pr} to approve, or ` : ''}/factory &lt;anything&gt;</span>
+      <button type="button" class="btn" data-open="${esc(j.id)}">REVIEW FILES</button>
+    </div>`).join('')
+  const n = waiting.length
+  return `<div class="attn-head"><span class="tag human">YOUR CALL</span>
+    ${n === 1 ? 'One job is waiting for your decision.' : `${n} jobs are waiting for your decision.`}</div>${rows}`
+}
+
 async function render() {
   const problems = current.installed ? []
     : [`${current.slug} has no local checkout with factory/ in it: set its path in config/projects.yaml`]
+  const q = query.trim().toLowerCase()
+  const shown = (j) => FILTERS[filter](j) && (!q || j.id.toLowerCase().includes(q) || String(j.title).toLowerCase().includes(q))
   const cards = new Map(COLUMNS.map((c) => [c, []]))
+  let count = 0
   for (const job of jobs) {
     if (!STAGES.has(job.stage)) { problems.push(`Job ${job.id} has unknown stage "${job.stage}"`); continue }
+    if (!shown(job)) continue
+    count++
     const rounds = []
     for (let n = 1; n <= job.round; n++) rounds.push(roundRow(job, n, await roundVerdicts(job, n)))
     cards.get(COLUMNS.find((c) => c.stages.includes(job.stage))).push(card(job, rounds))
   }
   // Newest first within a column.
-  const html = COLUMNS.map((c) => `
-    <section class="col ${c.cls || ''}">
+  const board = COLUMNS.map((c) => `
+    <section class="col ${c.cls || ''}" aria-label="${c.label}">
       <div class="col-head">
-        <h2>${c.label}</h2><span class="who">${c.who}</span>
-        <span class="count">${cards.get(c).length || ''}</span>
+        <div><h2 class="px">${c.label}</h2><span class="count">${cards.get(c).length}</span></div>
+        <span class="who">${c.who}</span>
       </div>
-      ${cards.get(c).reverse().join('') || '<div class="empty">—</div>'}
+      ${cards.get(c).reverse().join('') || '<div class="empty">No jobs</div>'}
     </section>`).join('')
-  const banner = problems.map((p) => `<div class="banner">${esc(p)}</div>`).join('')
-  if (html + banner !== lastRender) {
-    lastRender = html + banner
-    $('board').innerHTML = html
-    $('banner').innerHTML = banner
-  }
+
   const running = jobs.filter((j) => LIVE.has(j.stage)).length
+  const waiting = jobs.filter((j) => j.stage === 'needs-human')
+  const merged = jobs.filter((j) => j.stage === 'merged').length
   const cost = jobs.reduce((sum, j) => sum + Number(j.cost_usd), 0)
+  const kpis = [
+    kpi('all', 'ALL JOBS', jobs.length, `$${cost.toFixed(2)} API-equivalent`),
+    kpi('live', 'RUNNING', running, 'agents at work', '', 'var(--peri)'),
+    kpi('human', 'NEEDS YOU', waiting.length, waiting.length ? 'escalated' : 'nothing waiting', 'amber', waiting.length ? 'var(--amber)' : 'var(--text)'),
+    kpi('done', 'MERGED', merged, 'verified and shipped', 'mint', 'var(--mint)'),
+  ].join('')
+  const banner = problems.map((p) => `<div class="banner">${esc(p)}</div>`).join('')
+  const attn = attention(waiting)
+
+  const html = board + banner + kpis + attn
+  if (html !== lastRender) {
+    lastRender = html
+    $('board').innerHTML = board
+    $('banner').innerHTML = banner
+    $('kpis').innerHTML = kpis
+    $('attn').innerHTML = attn
+  }
+  const noun = jobs.length === 1 ? 'job' : 'jobs'
+  $('showing').textContent = count === jobs.length ? `Showing ${jobs.length} ${noun}` : `Showing ${count} of ${jobs.length} ${noun}`
   $('totals').textContent = `${running} running · $${cost.toFixed(2)} API-equivalent`
 }
 
@@ -464,7 +562,7 @@ async function poll() {
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
-    status.innerHTML = `<span class="dot"></span>${esc(jobsDir())} · ${new Date().toLocaleTimeString()}`
+    status.innerHTML = `<span class="dot"></span>LIVE · ${esc(jobsDir())} · ${new Date().toLocaleTimeString()}`
   } catch (err) {
     status.className = 'status error'
     status.innerHTML = `<span class="dot"></span>${esc(err.message)}`
@@ -486,23 +584,29 @@ async function loadJobs(dir) {
 
 // ---- Projects ------------------------------------------------------------
 
-// One tab per project, with what is running and what waits on you.
+// One dropdown entry per project, with what is running and what waits on you.
+let lastOptions = ''
 function renderTabs(all) {
   if (!projects[0].slug) return
-  $('tabs').innerHTML = projects.map((p, i) => {
+  $('picker').hidden = false
+  const options = projects.map((p, i) => {
     const run = all[i].filter((j) => LIVE.has(j.stage)).length
     const yours = all[i].filter((j) => j.stage === 'needs-human').length
-    return `<a class="tab" href="#${esc(p.slug)}" ${p === current ? 'aria-current="page"' : ''}>${esc(p.name)}
-      ${p.installed ? '' : '<span>no checkout</span>'}
-      ${run ? `<span class="run">${run} running</span>` : ''}
-      ${yours ? `<span class="yours">${yours} yours</span>` : ''}</a>`
+    const label = [p.name, p.installed ? '' : 'no checkout', run ? `${run} running` : '', yours ? `${yours} yours` : '']
+      .filter(Boolean).join(' · ')
+    return `<option value="${esc(p.slug)}" ${p === current ? 'selected' : ''}>${esc(label)}</option>`
   }).join('')
+  // Rebuilding the options closes an open dropdown, so only when something changed.
+  if (options !== lastOptions) { lastOptions = options; $('project').innerHTML = options }
+  const others = projects.reduce((n, p, i) => n + (p === current ? 0 : all[i].filter((j) => j.stage === 'needs-human').length), 0)
+  $('others').textContent = others ? `${others} waiting in other projects` : ''
 }
+$('project').addEventListener('change', (e) => { location.hash = encodeURIComponent(e.target.value) })
 
 function pickProject() {
   current = projects.find((p) => p.slug === decodeURIComponent(location.hash.slice(1)))
     || projects.find((p) => p.installed) || projects[0]
-  document.title = current.name ? `${current.name} · Software Factory` : 'Software Factory'
+  document.title = current.name ? `${current.name} · HyperSoftwareFactory` : 'HyperSoftwareFactory'
 }
 
 window.addEventListener('hashchange', () => { pickProject(); closeDrawer(); poll() })
@@ -515,7 +619,16 @@ async function start() {
   pickProject()
   poll()
   setInterval(poll, POLL_MS)
+  // factory/VERSION, served beside this page by both servers.
+  fetchFirst('VERSION').then((v) => { if (v) $('version').textContent = `v${v}` })
 }
+
+$('refresh').addEventListener('click', async (e) => {
+  const b = e.currentTarget
+  b.setAttribute('aria-busy', 'true')
+  await poll()
+  b.removeAttribute('aria-busy')
+})
 
 // ---- Drawer --------------------------------------------------------------
 
@@ -550,8 +663,8 @@ function sortFiles(files) {
 
 function tone(first) {
   if (/^(VERDICT:\s*PASS|GATE:\s*PASS|APPROVE|STATUS:\s*READY|DECISION:\s*ACCEPT)$/.test(first)) return 'good'
-  if (/^(VERDICT:\s*CHANGES|DECISION:\s*NEEDS-INFO)$/.test(first)) return 'warn'
-  if (/^(ESCALATE|REJECTED|STATUS:\s*BLOCKED|GATE:\s*FAIL|DECISION:\s*REJECT)$/.test(first)) return 'stop'
+  if (/^(VERDICT:\s*CHANGES|DECISION:\s*NEEDS-INFO|GATE:\s*FAIL|STATUS:\s*BLOCKED)$/.test(first)) return 'warn'
+  if (/^(ESCALATE|REJECTED|DECISION:\s*REJECT)$/.test(first)) return 'stop'
   return null
 }
 
@@ -560,6 +673,7 @@ const firstLines = new Map()
 async function refreshDrawer() {
   const job = jobs.find((j) => j.id === openJobId)
   if (!job) return
+  $('d-head').className = `d-head ${tint(job.stage)}`
   $('d-num').textContent = `${job.id} · ${job.stage}${job.round ? ` · round ${job.round}` : ''} · $${Number(job.cost_usd).toFixed(2)} · ${elapsed(job)}`
   $('d-title').textContent = job.title
   $('d-links').innerHTML = links(job)
@@ -579,7 +693,7 @@ async function refreshDrawer() {
 
   let group = null
   $('d-files').innerHTML = files.map((f) => {
-    const g = f.includes('/') ? f.split('/')[0].replace('round-', 'Round ') : 'Job'
+    const g = f.includes('/') ? f.split('/')[0].replace('round-', 'ROUND ') : 'JOB'
     const head = g !== group ? `<div class="group">${esc(g)}</div>` : ''
     group = g
     const round = f.match(/^round-(\d+)\//)
@@ -597,11 +711,15 @@ async function refreshDrawer() {
   }
 }
 
+let opener = null
+
 async function openDrawer(id) {
+  opener = document.activeElement
   openJobId = id
   openPath = null
   openText = undefined
   document.body.classList.add('open')
+  document.querySelector('.close').focus()
   try {
     await refreshDrawer()
   } catch (err) {
@@ -610,12 +728,18 @@ async function openDrawer(id) {
 }
 
 function closeDrawer() {
+  if (!openJobId) return
   openJobId = null
   document.body.classList.remove('open')
+  opener?.focus?.()
 }
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('a')) return
+  const f = e.target.closest('[data-filter]')
+  if (f) { filter = filter === f.dataset.filter ? 'all' : f.dataset.filter; return render() }
+  const o = e.target.closest('[data-open]')
+  if (o) return openDrawer(o.dataset.open)
   const cardEl = e.target.closest('[data-job]')
   if (cardEl) return openDrawer(cardEl.dataset.job)
   const fileEl = e.target.closest('[data-file]')
@@ -632,6 +756,7 @@ document.addEventListener('keydown', (e) => {
   const cardEl = e.target.closest?.('[data-job]')
   if (cardEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(cardEl.dataset.job) }
 })
+$('search').addEventListener('input', (e) => { query = e.target.value; render() })
 
 // ---- Markdown (just enough for the factory's files) ---------------------
 
@@ -672,7 +797,7 @@ function markdown(src) {
     while (i < lines.length && /^[A-Z-]+:\s/.test(lines[i])) extra.push(lines[i++])
     if (extra.length) html += `<div class="head">${esc(extra.join('\n'))}</div>`
   }
-  if (split.summary !== null) html += `<section class="summary"><h2>Summary</h2>${markdown(split.summary)}</section>`
+  if (split.summary !== null) html += `<section class="summary"><h2>SUMMARY</h2>${markdown(split.summary)}</section>`
 
   const isList = (l) => /^\s*([-*+]|\d+\.)\s+/.test(l)
   const isBlockStart = (l) => /^(#{1,6}\s|```|\s*>|\|)/.test(l) || isList(l)
