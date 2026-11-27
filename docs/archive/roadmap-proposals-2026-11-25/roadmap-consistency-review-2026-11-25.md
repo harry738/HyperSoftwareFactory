@@ -1,3 +1,5 @@
+> **Archived 25 Nov 2026.** Historical proposal, superseded by [reference/build-plan.md](../../../reference/build-plan.md) (one roadmap). Its status claims and links are not maintained.
+
 # Roadmap consistency review (25 November 2026, Europe/London)
 
 Local only. Not pushed. This is a review of the proposal set under `this working tree` after the LLM provider spec and its `docs/roadmap/deployable-roadmap.md` entry were written. It is not an official revision of `reference/build-plan.md`. The operator remains the only merger.

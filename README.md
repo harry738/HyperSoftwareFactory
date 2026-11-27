@@ -313,18 +313,22 @@ FullAuto is a planned operator-selected alternative, not built. Hard policy boun
 
 ## Roadmap
 
-**Now: E1.6 — first signed-in central job on a real project.** Every job stops for the operator.
+One roadmap: the [build plan](reference/build-plan.md), v6.6. It sets the release sequence, the decisions taken and the engine tasks. The release names and exit criteria are summarised here.
 
-| Track | Focus | Status |
+**Now: R1, the reliable factory.** First the fail-closed merge default, then CI classification, the PR policy and serial merging. E1.6, the first job on a real project, needs the operator.
+
+| Release | Focus | Exit |
 |---|---|---|
-| Foundation | E1–E6: orchestration, caps, gates, evidence, container | Core implemented; real run, concurrency, schedule, flaky checks, hard separation, legacy retirement and console outstanding |
-| Assured autonomy | Shadow Dev council and measured decisions | Planned |
-| Intelligent operations | Hermes and weekly Kaizen (inside / outside views) | Planned |
-| End-to-end delivery | Holdout checks, deploy / rollback, second project | Planned |
-| External intake | Other signals and triage | Planned |
-| FullAuto (parallel policy track) | Operator-enabled mode, inside hard policy boundaries | Planned |
+| R1 Reliable | First real run, fail-closed merge, CI classification, bounded checks, isolation, PR policy | Ten supervised jobs, including a seeded gate failure, a CHANGES round and a runaway-stage kill |
+| R2 Verified | Specification contract, holdout tests, commit-bound evidence, project standards | Every accepted criterion has evidence |
+| R3 Scalable | Durable scheduler, concurrency, second project, conflict resolution | Three concurrent jobs across two projects |
+| R4 Delivery | Hermes, operations console, deploy and rollback | One issue reaches healthy staging |
+| R5 Learning | Knowledge packs, Kaizen, the shadow Dev council, the provider layer | Measured improvement against a baseline |
+| R6 Autonomous | FullAuto, LOW-tier unattended merge, market watch, external intake | Per-project evidence gates met |
 
-This is a product summary, not a change to the delivery order. The [authoritative build plan](reference/build-plan.md) contains engine tasks, dependencies and the exact feature sequence. Alternative builders, mid-run steering, a merge queue, webhook server and mobile app are not in scope.
+Autonomy levels L1–L4 are earned per project on real jobs and are defined in the build plan.
+
+This is a product summary, not a change to the delivery order. Alternative builders, mid-run steering, a merge queue, webhook server and mobile app are not in scope.
 
 ## Documentation
 
