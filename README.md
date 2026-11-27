@@ -76,7 +76,7 @@ python factory/bin/factory onboard your-org/project-alpha
 Onboarding creates a private clone and project configuration. Before running:
 
 1. Implement the project's `checks.sh` under `$FACTORY_HOME/projects/project-alpha/` (the template deliberately fails).
-2. Review `config.json`, protected/sensitive paths, budgets and base branch; keep `unattended_merge: false`.
+2. Review `config.json`, protected/sensitive paths, budgets and base branch; keep `unattended_merge: false`. An unattended merge needs the JSON boolean `true`: a missing key or any other value means a person merges, so a project that relied on the old default must set the key explicitly.
 3. Provide `AGENTS.md` or `CLAUDE.md` and `CONTEXT.md` in the project. Enable required CI and branch protection.
 4. Keep the factory home and credentials outside public repositories.
 
