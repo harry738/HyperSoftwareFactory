@@ -1,8 +1,8 @@
 <div align="center">
 
-<p align="center"><img src="docs/assets/banner-retro-teal-hyper.png" width="100%" alt="HyperSoftwareFactory. Build with agents. Verify with evidence." /></p>
+<p align="center"><img src="../docs/assets/banner-retro-teal-hyper.png" width="100%" alt="HyperSoftwareFactory. Build with agents. Verify with evidence." /></p>
 
-<p align="center"><img src="docs/assets/banner-assembly-line-retro-sharp.png" width="100%" alt="Illustration of AI agents planning, coding, testing, reviewing and verifying changes before a policy-controlled merge." /></p>
+<p align="center"><img src="../docs/assets/banner-assembly-line-retro-sharp.png" width="100%" alt="Illustration of AI agents planning, coding, testing, reviewing and verifying changes before a policy-controlled merge." /></p>
 
 <p align="center"><sub>Illustrative factory floor. Merge decisions remain subject to project policy and operator approval.</sub></p>
 
@@ -13,17 +13,17 @@
 Convert labelled GitHub issues into scoped changes, independently reviewed pull requests and operator-controlled decisions, across projects from one central factory.
 
 [![CI](https://github.com/harry738/HyperSoftwareFactory/actions/workflows/tests.yml/badge.svg)](https://github.com/harry738/HyperSoftwareFactory/actions/workflows/tests.yml)
-[![Pilot](https://img.shields.io/badge/status-pilot-54e0b1?style=flat-square&labelColor=172033)](reference/build-plan.md)
-[![Python](https://img.shields.io/badge/Python-3.x-8eabff?style=flat-square&labelColor=172033)](requirements.txt)
-[![MIT](https://img.shields.io/badge/root-MIT-8eabff?style=flat-square&labelColor=172033)](LICENSE)
-[![GPLv3](https://img.shields.io/badge/engine-GPLv3-54e0b1?style=flat-square&labelColor=172033)](factory/LICENSE)
+[![Pilot](https://img.shields.io/badge/status-pilot-54e0b1?style=flat-square&labelColor=172033)](../reference/build-plan.md)
+[![Python](https://img.shields.io/badge/Python-3.x-8eabff?style=flat-square&labelColor=172033)](../requirements.txt)
+[![MIT](https://img.shields.io/badge/root-MIT-8eabff?style=flat-square&labelColor=172033)](../LICENSE)
+[![GPLv3](https://img.shields.io/badge/engine-GPLv3-54e0b1?style=flat-square&labelColor=172033)](../factory/LICENSE)
 
 [Overview](#overview) · [Quick start](#quick-start) · [Workflow](#the-working-factory) · [Roadmap](#roadmap) · [Architecture](#target-architecture) · [Contribute](#contributing)
 
 </div>
 
 > [!IMPORTANT]
-> **Working pilot, not a production-autonomy claim.** The central runner has passed end-to-end tests using GitHub and model stand-ins, but its first run on a real project remains open. Binley is a fictional demonstrator. Container isolation, Dev council, deploy/rollback and external signal intake are planned. [Current implementation status](reference/build-plan.md).
+> **Working pilot, not a production-autonomy claim.** The central runner has passed end-to-end tests using GitHub and model stand-ins, but its first run on a real project remains open. Binley is a fictional demonstrator. Container isolation, Dev council, deploy/rollback and external signal intake are planned. [Current implementation status](../reference/build-plan.md).
 
 ## Overview
 
@@ -31,7 +31,7 @@ HyperSoftwareFactory is a **central control plane for agent-assisted software de
 
 <div align="center">
 
-<img src="docs/assets/factory-flow.gif" alt="Animated data flow from labelled GitHub issue through intake, spec, build, verification and decision; failed work loops back and human decisions are escalated." width="100%" />
+<img src="../docs/assets/factory-flow.gif" alt="Animated data flow from labelled GitHub issue through intake, spec, build, verification and decision; failed work loops back and human decisions are escalated." width="100%" />
 
 <sub>Illustrative flow. The scripts and state machine define actual job transitions.</sub>
 
@@ -66,7 +66,7 @@ python factory/bin/factory run project-alpha 42    # issue #42
 python factory/bin/factory status project-alpha    # jobs and progress
 ```
 
-**Supervised by default:** `unattended_merge` is `false` in the factory template. Operator approval and target-repository branch protection still matter. An operator-selectable FullAuto mode is described in the [build plan](reference/build-plan.md#fullauto-mode); it should not be mistaken for validated production capability.
+**Supervised by default:** `unattended_merge` is `false` in the factory template. Operator approval and target-repository branch protection still matter. An operator-selectable FullAuto mode is described in the [build plan](../reference/build-plan.md#fullauto-mode); it should not be mistaken for validated production capability.
 
 ## The working factory
 
@@ -124,9 +124,11 @@ Project rules stay outside the builder's worktree. This is a **logical separatio
 ```bash
 bash scripts/test.sh
 
+# Per-repo install only: serves jobs under factory/jobs/
 cd factory
 python -m http.server --bind 127.0.0.1 8000
 # Open http://localhost:8000/dashboard.html
+# Central install (Quick start above): run scripts/factory-dashboard.py instead, which serves every project's jobs under FACTORY_HOME.
 ```
 
 The dashboard follows the brand system (navy grid, mint for verified, periwinkle for stages, amber only for a human handoff). It puts jobs that wait on you at the top, its totals filter the board (running, needs you, merged), a search box matches titles and job ids, and a button refreshes it between the 2-second polls. The footer shows the version in `factory/VERSION`.
@@ -137,7 +139,7 @@ The older registry-based multi-project dashboard is available via `python script
 
 The objective is one factory that takes signals to deployed, verified, monitored software across the operator's own projects, with the operator setting policy. Binley tested whether the idea works; it does, and it is closed.
 
-The [build plan](reference/build-plan.md) sets how it gets there: a central factory, deployed as a container on local Docker Desktop, with Claude Code as the development engine and a script, not a model, in charge of the loop. The core engine is built first on a three-week timebox; features follow one at a time. What the factory may do without the operator is earned separately, on measured jobs on a real project.
+The [build plan](../reference/build-plan.md) sets how it gets there: a central factory, deployed as a container on local Docker Desktop, with Claude Code as the development engine and a script, not a model, in charge of the loop. The core engine is built first on a three-week timebox; features follow one at a time. What the factory may do without the operator is earned separately, on measured jobs on a real project.
 
 | Engine track | Goal | Status |
 |---|---|---|
@@ -159,7 +161,7 @@ Then the features, in order:
 7. **A second project.**
 8. **Other external intake.**
 
-Alongside these, **FullAuto mode**: an option the operator selects for one job (a label), one run (a flag) or a whole project, under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](reference/build-plan.md#fullauto-mode) has the parts and their order.
+Alongside these, **FullAuto mode**: an option the operator selects for one job (a label), one run (a flag) or a whole project, under which no job waits for a person. The engine merges by rule and by a model's judgment inside a policy the operator writes, reverts a merge that breaks the base branch, and widens or narrows what it allows itself from its own record. The [build plan](../reference/build-plan.md#fullauto-mode) has the parts and their order.
 
 ### Now
 
@@ -173,12 +175,12 @@ Steering a run mid-flight, other models for the builder or reviewers, a merge qu
 
 | Path | What's in it |
 |---|---|
-| [`factory/`](factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, `settings.example.json`, live `dashboard.html` |
-| [`.claude/agents/`](.claude/agents/), [`.claude/hooks/`](.claude/hooks/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver; a hook that blocks hand merges |
-| [`.claude/skills/`](.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
-| [`reference/binley/`](reference/binley/) | The idea validation, now closed: pilot report, bootstrap prompt, how to run it on Windows |
-| [`reference/`](reference/) | Build plan, [feature comparison](reference/feature-comparison.md) against other systems, [competitor list](reference/competitors.md), the vision architecture, planned integrations |
-| [`config/`](config/), [`scripts/`](scripts/) | Project registry (`projects.yaml`, local and gitignored; `projects.example.yaml` shows its shape) and its onboarding script |
+| [`factory/`](../factory/) | The working factory: `bin/job` (state machine), `bin/gate`, `bin/route`, `bin/frontier`, `checks.sh`, `config.json`, `settings.example.json`, live `dashboard.html` |
+| [`.claude/agents/`](../.claude/agents/), [`.claude/hooks/`](../.claude/hooks/) | Factory agents: intake, spec-writer, builder, code/security/UI/UX reviewers, approver; a hook that blocks hand merges |
+| [`.claude/skills/`](../.claude/skills/) | `factory` skill (`/factory run`) plus vetted, pinned skills (to-spec, to-tickets, tdd, deslop, ...) |
+| [`reference/binley/`](../reference/binley/) | The idea validation, now closed: pilot report, bootstrap prompt, how to run it on Windows |
+| [`reference/`](../reference/) | Build plan, [feature comparison](../reference/feature-comparison.md) against other systems, [competitor list](../reference/competitors.md), the vision architecture, planned integrations |
+| [`config/`](../config/), [`scripts/`](../scripts/) | Project registry (`projects.yaml`, local and gitignored; `projects.example.yaml` shows its shape) and its onboarding script |
 
 ## Project registry
 
@@ -187,7 +189,7 @@ pip install -r requirements.txt
 python scripts/factory-onboard.py --interactive
 ```
 
-The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
+The registry is `config/projects.yaml`. It is gitignored, because this repo is public and the registry names your projects and paths on your machine; [`config/projects.example.yaml`](../config/projects.example.yaml) shows its shape. The script adds a project to it and writes draft roadmap files and a `README.md` to `onboarding/<slug>/` for you to review and push to the project repo. The README follows [`config/README.template.md`](../config/README.template.md): a two-line pitch, a few honest badges, a quick start, a Mermaid architecture diagram, roadmap and contributing sections. It pushes nothing itself. The repo check needs an authenticated GitHub CLI (`gh auth login`). The working factory is installed per project and does not read this registry; only `scripts/factory-dashboard.py` does, to find each project's board.
 
 The build plan replaces the wizard with `factory onboard` (E1.2), which clones a repo, creates its config and checks its credentials.
 
@@ -214,10 +216,10 @@ flowchart LR
 
 | Document | What it covers |
 |---|---|
-| [Reference architecture](reference/software-factory-reference-architecture.md) | The vision: stages, gates, verification, security, observability |
-| [Build plan](reference/build-plan.md) | Operating model, engine track, evidence track, features in order |
-| [Multi-project architecture](reference/factory-multi-project-architecture.md) | How one factory serves many project repos |
-| [Context7](reference/context7-docs-mcp.md), [Modern Web Guidance](reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
+| [Reference architecture](../reference/software-factory-reference-architecture.md) | The vision: stages, gates, verification, security, observability |
+| [Build plan](../reference/build-plan.md) | Operating model, engine track, evidence track, features in order |
+| [Multi-project architecture](../reference/factory-multi-project-architecture.md) | How one factory serves many project repos |
+| [Context7](../reference/context7-docs-mcp.md), [Modern Web Guidance](../reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
 
 ## How The Target Is Designed To Work
 
@@ -284,7 +286,7 @@ flowchart LR
 | **L3** | Merge for the LOW tier, defined by path | The Dev council agreeing with you over twenty jobs, then twenty LOW-tier merges with no escape |
 | **L4** | Signal to deploy for the LOW tier; you set policy | L3 sustained for four weeks |
 
-Levels are per project and earned on a real one, so none is earned yet: Binley showed the mechanism works, including one unattended merge, but no real project has run a job. Always-stop rules by label and path outrank every level. Levels are the default, supervised mode; FullAuto mode is the operator's switch to skip the wait. The [build plan](reference/build-plan.md) has the full criteria.
+Levels are per project and earned on a real one, so none is earned yet: Binley showed the mechanism works, including one unattended merge, but no real project has run a job. Always-stop rules by label and path outrank every level. Levels are the default, supervised mode; FullAuto mode is the operator's switch to skip the wait. The [build plan](../reference/build-plan.md) has the full criteria.
 
 ## Planned Integrations
 
@@ -302,11 +304,11 @@ None of these is wired in yet, and their claims are the vendors' own.
 bash scripts/test.sh
 ```
 
-This is the supported test entry point and is also used by CI. It runs Python script tests, including the central runner with stand-ins; Windows-specific tests are skipped on non-Windows systems. See [AGENTS.md](AGENTS.md) for the conventions.
+This is the supported test entry point and is also used by CI. It runs Python script tests, including the central runner with stand-ins; Windows-specific tests are skipped on non-Windows systems. See [AGENTS.md](../AGENTS.md) for the conventions.
 
 ## Contributing
 
-1. Read the [reference architecture](reference/software-factory-reference-architecture.md) and the [build plan](reference/build-plan.md)
+1. Read the [reference architecture](../reference/software-factory-reference-architecture.md) and the [build plan](../reference/build-plan.md)
 2. Open an issue to discuss your proposed change
 3. Submit a PR
 
@@ -314,4 +316,4 @@ This is the supported test entry point and is also used by CI. It runs Python sc
 
 Synthesised from public material on agentic software development: Factory.ai, Claude Code, Islo's security architecture, Matt Pocock's skills, Lauren Tan's Poteto Mode, and Dexter Horthy's talk on software factories.
 
-**License:** [MIT](LICENSE), except `factory/`, `.claude/agents/` and `.claude/skills/factory/`, which are GPLv3 (see [`factory/LICENSE`](factory/LICENSE); from zazencodes-season-3 `src/software-factory-claude-code-v2`, with local patches). Vendored skills keep their own MIT licences in `.claude/skills/`.
+**License:** [MIT](../LICENSE), except `factory/`, `.claude/agents/` and `.claude/skills/factory/`, which are GPLv3 (see [`factory/LICENSE`](../factory/LICENSE); from zazencodes-season-3 `src/software-factory-claude-code-v2`, with local patches). Vendored skills keep their own MIT licences in `.claude/skills/`.

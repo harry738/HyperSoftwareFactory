@@ -403,8 +403,8 @@ function verdictOf(line) {
 }
 
 // A round's verdicts come from its files: the gate first, then each routed reviewer.
-async function roundVerdicts(job, n) {
-  const dir = `${jobsDir()}${job.id}/round-${n}/`
+async function roundVerdicts(job, n, base) {
+  const dir = `${base}${job.id}/round-${n}/`
   const key = dir
   if (roundCache.has(key)) return roundCache.get(key)
   const v = { gate: verdictOf(await fetchFirst(dir + 'checks.md')), reviews: {} }
@@ -505,6 +505,7 @@ function attention(waiting) {
 
 async function render() {
   const gen = ++renderSeq // a newer render supersedes this one while it waits on rounds
+  const base = jobsDir() // one project for the whole render, even if the selection changes mid-way
   const problems = current.installed ? []
     : [`${current.slug} has no local checkout with factory/ in it: set its path in config/projects.yaml`]
   const q = query.trim().toLowerCase()
@@ -516,7 +517,7 @@ async function render() {
     if (!shown(job)) continue
     count++
     const rounds = []
-    for (let n = 1; n <= job.round; n++) rounds.push(roundRow(job, n, await roundVerdicts(job, n)))
+    for (let n = 1; n <= job.round; n++) rounds.push(roundRow(job, n, await roundVerdicts(job, n, base)))
     cards.get(COLUMNS.find((c) => c.stages.includes(job.stage))).push(card(job, rounds))
   }
   if (gen !== renderSeq) return // superseded: do not overwrite the board with older results
@@ -578,7 +579,10 @@ async function poll() {
 // factory/bin/job writes each jobs/<id>/job.json.
 async function loadJobs(dir) {
   let listing
-  try { listing = await fetchText(dir) } catch { return [] }
+  try { listing = await fetchText(dir) } catch (err) {
+    if (/HTTP 404/.test(err.message)) return []
+    throw err
+  }
   const doc = new DOMParser().parseFromString(listing, 'text/html')
   const ids = [...doc.querySelectorAll('a')]
     .map((a) => decodeURIComponent(a.getAttribute('href')))
@@ -681,7 +685,8 @@ function tone(first) {
 
 const firstLines = new Map()
 
-async function refreshDrawer() {
+let drawerGen = 0 // bumped by every drawer selection, so an older load can't overwrite a newer one
+async function refreshDrawer(gen = drawerGen) {
   const job = jobs.find((j) => j.id === openJobId)
   if (!job) return
   $('d-head').className = `d-head ${tint(job.stage)}`
@@ -691,6 +696,7 @@ async function refreshDrawer() {
 
   const base = `${jobsDir()}${job.id}/`
   const files = sortFiles(await listFiles(base))
+  if (gen !== drawerGen) return
   if (!openPath || !files.includes(openPath)) openPath = files[0] || null
 
   let text = null
@@ -702,6 +708,8 @@ async function refreshDrawer() {
     firstLines.set(base + f, (await fetchText(base + f)).split('\n')[0].trim())
   }))
 
+  if (gen !== drawerGen) return // a newer selection started while the files loaded
+  const focusedFile = document.activeElement?.closest?.('#d-files [data-file]')?.dataset.file
   let group = null
   $('d-files').innerHTML = files.map((f) => {
     const g = f.includes('/') ? f.split('/')[0].replace('round-', 'ROUND ') : 'JOB'
@@ -715,6 +723,7 @@ async function refreshDrawer() {
     return `${head}<button class="file ${f === openPath ? 'on' : ''}" data-file="${esc(f)}">
       <span class="v ${t || ''}"></span>${name}</button>`
   }).join('') || '<div class="empty">No files yet.</div>'
+  if (focusedFile) [...$('d-files').querySelectorAll('[data-file]')].find((b) => b.dataset.file === focusedFile)?.focus()
 
   if (text !== openText) {
     openText = text
@@ -724,24 +733,33 @@ async function refreshDrawer() {
 
 let opener = null
 
+function showDrawerError(err) {
+  $('d-doc').innerHTML = `<p class="note">${esc(err.message)}</p>`
+}
+
 async function openDrawer(id) {
+  const gen = ++drawerGen
   opener = document.activeElement
   openJobId = id
   openPath = null
   openText = undefined
   document.body.classList.add('open')
+  // The drawer is modal: the page behind it is inert until it closes.
+  for (const el of document.body.children) if (el.id !== 'overlay') el.inert = true
   document.querySelector('.close').focus()
   try {
-    await refreshDrawer()
+    await refreshDrawer(gen)
   } catch (err) {
-    $('d-doc').innerHTML = `<p class="note">${esc(err.message)}</p>`
+    if (gen === drawerGen) showDrawerError(err)
   }
 }
 
 function closeDrawer() {
   if (!openJobId) return
+  drawerGen++
   openJobId = null
   document.body.classList.remove('open')
+  for (const el of document.body.children) el.inert = false
   opener?.focus?.()
 }
 
@@ -755,17 +773,28 @@ document.addEventListener('click', (e) => {
   if (cardEl) return openDrawer(cardEl.dataset.job)
   const fileEl = e.target.closest('[data-file]')
   if (fileEl) {
+    const gen = ++drawerGen
     openPath = fileEl.dataset.file
     openText = undefined
     $('d-doc').parentElement.scrollTop = 0
-    return refreshDrawer()
+    return refreshDrawer(gen).catch((err) => { if (gen === drawerGen) showDrawerError(err) })
   }
   if (e.target.closest('[data-close]')) closeDrawer()
 })
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') return closeDrawer()
+  if (e.key === 'Tab' && openJobId) { // keep Tab inside the drawer while it is open
+    const drawer = document.querySelector('.drawer')
+    const items = [...drawer.querySelectorAll('button, a[href], [tabindex]')].filter((el) => !el.disabled && el.tabIndex >= 0)
+    if (!items.length) return
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (e.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { e.preventDefault(); first.focus() }
+    return
+  }
   const cardEl = e.target.closest?.('[data-job]')
-  if (cardEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(cardEl.dataset.job) }
+  if (cardEl && e.target === cardEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(cardEl.dataset.job) }
 })
 $('search').addEventListener('input', (e) => { query = e.target.value; render() })
 
