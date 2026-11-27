@@ -700,7 +700,12 @@ async function refreshDrawer(gen = drawerGen) {
   $('d-num').textContent = `${job.id} · ${job.stage}${job.round ? ` · round ${job.round}` : ''} · $${Number(job.cost_usd).toFixed(2)} · ${elapsed(job)}`
   $('d-title').textContent = job.title
   const linksHtml = links(job)
-  if (linksHtml !== lastLinksHtml) { lastLinksHtml = linksHtml; $('d-links').innerHTML = linksHtml } // unchanged links keep focus
+  const focusedHref = document.activeElement?.closest?.('#d-links a')?.getAttribute('href')
+  if (linksHtml !== lastLinksHtml) {
+    lastLinksHtml = linksHtml
+    $('d-links').innerHTML = linksHtml
+    if (focusedHref !== undefined) ([...$('d-links').querySelectorAll('a')].find((x) => x.getAttribute('href') === focusedHref) || $('d-links').closest('.drawer').querySelector('.close'))?.focus()
+  }
 
   const base = `${jobsDir()}${job.id}/`
   const files = sortFiles(await listFiles(base))
@@ -715,7 +720,8 @@ async function refreshDrawer(gen = drawerGen) {
     firstLines.set(base + path, text.split('\n')[0].trim())
   }
   await Promise.all(files.filter((f) => !firstLines.has(base + f)).map(async (f) => {
-    firstLines.set(base + f, (await fetchText(base + f)).split('\n')[0].trim())
+    const fetched = await fetchText(base + f)
+    if (gen === drawerGen) firstLines.set(base + f, fetched.split('\n')[0].trim())
   }))
 
   if (gen !== drawerGen) return // a newer selection started while the files loaded
