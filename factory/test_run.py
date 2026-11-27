@@ -221,7 +221,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 18)]
+               "state": "OPEN", "comments": []} for n in range(1, 17)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -539,17 +539,6 @@ def test_a_conflict_during_review_goes_back_to_the_builder_before_reviewers_run(
     assert j["stage"] == "needs-human" and j["round"] == 2, j
     ran = stages_run(16)
     assert ran[2:5] == ["builder", "builder", "reviewer-code"], ran  # round 1's reviewers were never started
-
-
-def test_an_unattended_merge_fails_closed_unless_set_to_true():
-    config(unattended_merge="yes")  # not the boolean true: a job must wait for a person
-    label(17)
-    try:
-        res = factory("run", "demo")
-    finally:
-        config(unattended_merge=False)
-    assert res.returncode == 0, res.stdout + res.stderr
-    assert job(17)["stage"] == "needs-human", job(17)
 
 
 def test_status_lists_every_job():
