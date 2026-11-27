@@ -757,16 +757,17 @@ function showDrawerError(err) {
   if (hadFocus) $('d-doc').closest('.drawer').querySelector('.close').focus()
 }
 
-async function openDrawer(id) {
+async function openDrawer(id, from) {
   const gen = ++drawerGen
-  opener = document.activeElement
+  opener = from || document.activeElement // the card or button that opened it, which keeps focus when it's inert
   openJobId = id
   openPath = null
   openText = undefined
   document.body.classList.add('open')
   // The drawer is modal: the page behind it is inert until it closes.
   for (const el of document.body.children) if (el.id !== 'overlay') el.inert = true
-  document.querySelector('.close').focus()
+  // The drawer slides in over .25s and is not focusable until then, so focus waits for the slide.
+  setTimeout(() => { if (openJobId === id) document.querySelector('.close').focus() }, 260)
   try {
     await refreshDrawer(gen)
   } catch (err) {
@@ -788,9 +789,9 @@ document.addEventListener('click', (e) => {
   const f = e.target.closest('[data-filter]')
   if (f) { filter = filter === f.dataset.filter ? 'all' : f.dataset.filter; return render() }
   const o = e.target.closest('[data-open]')
-  if (o) return openDrawer(o.dataset.open)
+  if (o) return openDrawer(o.dataset.open, o)
   const cardEl = e.target.closest('[data-job]')
-  if (cardEl) return openDrawer(cardEl.dataset.job)
+  if (cardEl) return openDrawer(cardEl.dataset.job, cardEl)
   const fileEl = e.target.closest('[data-file]')
   if (fileEl) {
     const gen = ++drawerGen
@@ -814,7 +815,7 @@ document.addEventListener('keydown', (e) => {
     return
   }
   const cardEl = e.target.closest?.('[data-job]')
-  if (cardEl && e.target === cardEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(cardEl.dataset.job) }
+  if (cardEl && e.target === cardEl && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(cardEl.dataset.job, cardEl) }
 })
 $('search').addEventListener('input', (e) => { query = e.target.value; render() })
 
