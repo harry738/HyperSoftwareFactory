@@ -374,6 +374,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
 let projects = [{ slug: '', name: '', installed: true }]
 let current = projects[0]
 let jobs = []
+let jobsSlug = null // the project whose jobs are in `jobs`; nothing else may be shown or used for rounds
 let renderSeq = 0
 let lastRender = ''
 let filter = 'all'
@@ -512,7 +513,8 @@ async function render() {
   const shown = (j) => FILTERS[filter](j) && (!q || j.id.toLowerCase().includes(q) || String(j.title).toLowerCase().includes(q))
   const cards = new Map(COLUMNS.map((c) => [c, []]))
   let count = 0
-  for (const job of jobs) {
+  const shownJobs = jobsSlug === current.slug ? jobs : []
+  for (const job of shownJobs) {
     if (!STAGES.has(job.stage)) { problems.push(`Job ${job.id} has unknown stage "${job.stage}"`); continue }
     if (!shown(job)) continue
     count++
@@ -565,12 +567,15 @@ async function poll() {
   try {
     const all = await Promise.all(projects.map((p) => p.installed ? loadJobs(jobsDir(p)) : []))
     jobs = all[projects.indexOf(current)]
+    jobsSlug = current.slug
     renderTabs(all)
     await render()
     if (openJobId) await refreshDrawer()
     status.className = 'status'
     status.innerHTML = `<span class="dot"></span>LIVE · ${esc(jobsDir())} · ${new Date().toLocaleTimeString()}`
   } catch (err) {
+    // A failed load keeps the last jobs only if they belong to the selected project.
+    if (jobsSlug !== current.slug) { jobs = []; jobsSlug = null; render() }
     status.className = 'status error'
     status.innerHTML = `<span class="dot"></span>${esc(err.message)}`
   }
@@ -687,7 +692,7 @@ const firstLines = new Map()
 
 let drawerGen = 0 // bumped by every drawer selection, so an older load can't overwrite a newer one
 async function refreshDrawer(gen = drawerGen) {
-  const job = jobs.find((j) => j.id === openJobId)
+  const job = jobsSlug === current.slug ? jobs.find((j) => j.id === openJobId) : null
   if (!job) return
   $('d-head').className = `d-head ${tint(job.stage)}`
   $('d-num').textContent = `${job.id} · ${job.stage}${job.round ? ` · round ${job.round}` : ''} · $${Number(job.cost_usd).toFixed(2)} · ${elapsed(job)}`
