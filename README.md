@@ -300,6 +300,68 @@ Autonomy is earned **per project**, through measured work on a real project. Non
 
 FullAuto is a planned operator-selected alternative, not built. Hard policy boundaries and required checks must still apply. [Autonomy criteria and FullAuto](reference/build-plan.md#fullauto-mode).
 
+## Target architecture
+
+Design direction, not live deployment. Signals, council decisions, deployment, monitoring and Kaizen are target-state capabilities. The [build plan](reference/build-plan.md) decides what is built and what comes next.
+
+```mermaid
+flowchart LR
+    S["Signals"] --> I["Intake"] --> T["Triage"] --> SP["Spec"] --> B["Build"] --> V["Verify"] --> D["Deploy"] --> M["Monitor"] --> L["Learn"]
+
+    SP -.- G1{{"Dev council<br/>advisory, shadow first"}}
+    D -.- G2{{"Deploy risk<br/>gate"}}
+    L -.- K[["Weekly Kaizen"]]
+    K -. "improvement items" .-> I
+
+    classDef gate fill:#fff3cd,stroke:#d39e00,color:#000
+    class G1,G2 gate
+```
+
+Eight stages, two gates, one weekly Kaizen review, and five security boundaries.
+
+| Document | What it covers |
+|---|---|
+| [Reference architecture](reference/software-factory-reference-architecture.md) | The vision: stages, gates, verification, security, observability |
+| [Build plan](reference/build-plan.md) | Operating model, release sequence, engine tasks, decisions |
+| [Multi-project architecture](reference/factory-multi-project-architecture.md) | How one factory serves many project repositories |
+| [Context7](reference/context7-docs-mcp.md), [Modern Web Guidance](reference/modern-web-guidance-google-mwg.md) | Planned build-floor integrations |
+
+### Dev council
+
+A Chair and three seats (Architect, Risk and Product), drawn from different model vendors, debate a job that would otherwise go to the operator. It starts in shadow mode: it records a verdict, and the operator's decision still counts. It earns merge power only after it has agreed with the operator for long enough. Until then its verdicts are advisory, and always-stop rules outrank them.
+
+### Signal intake
+
+Social links, bug reports, customer feedback and alerts enter a triage queue and are routed to a project. External content is untrusted, so a tool-less model call summarises it before any agent that can write code sees it.
+
+### Build and independent verification
+
+An approved spec is built by Claude Code in an isolated worktree, following a playbook for each task type. The build gets at most three review-fix cycles. Verifiers run as a separate job with read-only tokens, so they cannot change the code they review: a tester writes tests from the spec alone, a reviewer checks standards and the spec, a lint check looks at complexity, a scanner covers supply chain, credentials and egress, and a behavioural verifier runs the change as a user would.
+
+### Security boundaries
+
+| Boundary | What it blocks |
+|---|---|
+| **Isolation** | An agent touching the host or other projects |
+| **Egress** | Any destination not on the allowlist |
+| **Supply chain** | Unapproved package hosts |
+| **Credentials** | Real secrets entering the agent sandbox |
+| **Budget** | Runs exceeding a hard USD, token or time cap, and unpinned model versions |
+
+### Observability and Kaizen
+
+Every stage transition appends one event row. A weekly review reads failures, cost, cycle time and escape rate from that log and records improvement items.
+
+## Hard constraints
+
+1. **No unreviewed output.** Every PR is reviewed by at least one independent verifier.
+2. **Evidence-based verification.** A bare "PASS" counts as inconclusive.
+3. **Anti-slop gate.** A complexity increase above 50% on touched files blocks the PR for architecture review.
+4. **At most three review-fix loops.** This stops agent cycles from running forever.
+5. **Secrets stay outside the sandbox.**
+
+The target is to enforce these by the platform (branch protection, token scopes, runner budgets) rather than by agent instructions. The working factory enforces 1, 2 and 4 in its scripts today.
+
 ## Use cases
 
 | Scenario | What to inspect |
