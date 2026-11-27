@@ -374,6 +374,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
 let projects = [{ slug: '', name: '', installed: true }]
 let current = projects[0]
 let jobs = []
+let renderSeq = 0
 let lastRender = ''
 let filter = 'all'
 let query = ''
@@ -503,6 +504,7 @@ function attention(waiting) {
 }
 
 async function render() {
+  const gen = ++renderSeq // a newer render supersedes this one while it waits on rounds
   const problems = current.installed ? []
     : [`${current.slug} has no local checkout with factory/ in it: set its path in config/projects.yaml`]
   const q = query.trim().toLowerCase()
@@ -517,6 +519,7 @@ async function render() {
     for (let n = 1; n <= job.round; n++) rounds.push(roundRow(job, n, await roundVerdicts(job, n)))
     cards.get(COLUMNS.find((c) => c.stages.includes(job.stage))).push(card(job, rounds))
   }
+  if (gen !== renderSeq) return // superseded: do not overwrite the board with older results
   // Newest first within a column.
   const board = COLUMNS.map((c) => `
     <section class="col ${c.cls || ''}" aria-label="${c.label}">
