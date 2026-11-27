@@ -336,7 +336,7 @@ Social links, bug reports, customer feedback and alerts enter a triage queue and
 
 ### Build and independent verification
 
-An approved spec is built by Claude Code in an isolated worktree, following a playbook for each task type. The build gets at most three review-fix cycles. Verifiers run as a separate job with read-only tokens, so they cannot change the code they review: a tester writes tests from the spec alone, a reviewer checks standards and the spec, a lint check looks at complexity, a scanner covers supply chain, credentials and egress, and a behavioural verifier runs the change as a user would.
+An approved spec is built by Claude Code in an isolated worktree, following a playbook for each task type. The build gets at most three review-fix cycles. Verifiers run as a separate job with read-only tokens, and their checkout is mounted read-only, so they cannot change the code they review. A read-only token alone does not stop local file writes: a tester writes tests from the spec alone, a reviewer checks standards and the spec, a lint check looks at complexity, a scanner covers supply chain, credentials and egress, and a behavioural verifier runs the change as a user would.
 
 ### Security boundaries
 
@@ -357,10 +357,10 @@ Every stage transition appends one event row. A weekly review reads failures, co
 1. **No unreviewed output.** Every PR is reviewed by at least one independent verifier.
 2. **Evidence-based verification.** A bare "PASS" counts as inconclusive.
 3. **Anti-slop gate.** A complexity increase above 50% on touched files blocks the PR for architecture review.
-4. **At most three review-fix loops.** This stops agent cycles from running forever.
+4. **A bounded round budget.** Each job starts with three review-fix rounds (`max_rounds` in `factory/config.json`). Operator feedback grants a fresh budget. This stops agent cycles from running forever.
 5. **Secrets stay outside the sandbox.**
 
-The target is to enforce these by the platform (branch protection, token scopes, runner budgets) rather than by agent instructions. The working factory enforces 1, 2 and 4 in its scripts today.
+The target is to enforce these by the platform (branch protection, token scopes, runner budgets) rather than by agent instructions. The working factory enforces the round budget and the evidence rule in its scripts today.
 
 ## Use cases
 
