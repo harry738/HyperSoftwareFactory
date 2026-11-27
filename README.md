@@ -96,7 +96,7 @@ Copy `factory/` and `.claude/` into the target repository, then configure the pr
 | :--- | :--- |
 | [`factory/checks.sh`](factory/checks.sh) | Add the project's tests, lint and build. The template deliberately fails until configured. |
 | [`factory/config.json`](factory/config.json) | Set `base_branch` to the target repository's default branch (`main` here; a repository on `master` must change it, or jobs cannot create their worktree). Also set protected paths, models, prices and the review dev-server command. `{port}` is filled in per job. Next.js is the default; remove `dev_server` if there are no pages. |
-| `AGENTS.md` or `CLAUDE.md` in the target repo | Describe the project, its scope, commands and conventions for intake and the other agents. |
+| `AGENTS.md` or `CLAUDE.md` in the target repo | Describe the project, its scope, commands and conventions for intake and the other agents. Commit and push them to the configured `base_branch`: each job's worktree starts from `origin/<base_branch>`, so instructions that exist only locally are not seen. |
 | Merge policy and Git authentication | Decide who merges and authenticate Git for the checkout. Fresh installs do not include Binley's unattended-merge permission rule. |
 
 Use [`reference/binley/`](reference/binley/) as a worked example, including its checks and configuration. For Windows, see the [setup and operating notes](reference/binley/running-the-factory.md).
