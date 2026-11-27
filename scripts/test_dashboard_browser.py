@@ -57,10 +57,7 @@ def serve(site: Path) -> ThreadingHTTPServer:
     return server
 
 
-def main() -> int:
-    if os.environ.get("FACTORY_BROWSER_TESTS") != "1":
-        print("skipped: set FACTORY_BROWSER_TESTS=1 to run the browser check")
-        return 0
+def test_dashboard_keyboard_focus():
     from playwright.sync_api import sync_playwright
 
     site = Path(tempfile.mkdtemp(prefix="dash-browser-"))
@@ -73,7 +70,7 @@ def main() -> int:
             const a = document.activeElement;
             return {
                 inDrawer: !!a.closest('.drawer'),
-                isCard: !!a.closest('[data-job]') && !a.closest('.drawer'),
+                card: a.closest('[data-job]') && !a.closest('.drawer') ? a.closest('[data-job]').dataset.job : null,
                 bodyOpen: document.body.classList.contains('open'),
                 inert: [...document.body.children].filter(e => e.inert).map(e => e.id || e.tagName),
             };
@@ -109,12 +106,19 @@ def main() -> int:
             page.wait_for_timeout(200)
             closed = state(page)
             assert not closed["bodyOpen"] and closed["inert"] == [], closed
-            assert closed["isCard"], f"focus did not return to the card that opened the drawer: {closed}"
+            assert closed["card"] == "002-fix-login", f"focus did not return to the card that opened the drawer: {closed}"
 
             browser.close()
     finally:
         server.shutdown()
         shutil.rmtree(site, ignore_errors=True)
+
+
+def main() -> int:
+    if os.environ.get("FACTORY_BROWSER_TESTS") != "1":
+        print("skipped: set FACTORY_BROWSER_TESTS=1 to run the browser check")
+        return 0
+    test_dashboard_keyboard_focus()
     print("ok  browser: focus on open, Tab trap, focus back on close")
     return 0
 
