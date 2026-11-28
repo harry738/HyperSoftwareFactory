@@ -2,7 +2,7 @@
 
 Each project has a `config.json` in `$FACTORY_HOME/projects/<name>/`. `factory onboard` writes it from the template, `factory/config.json`: it adds `repo` and sets `base_branch` to the clone's default branch. This page lists every key of the template, plus `repo` and `council`, which the template does not have.
 
-"Default" is the value in the template. Where `factory/bin/run` has its own fallback for a missing key, the entry says so. `factory/test_config_doc.py` fails when a template key has no entry here.
+"Default" is the value in the template. Where `factory/bin/run` has its own fallback for a missing key, the entry says so. `factory/test_config_doc.py` fails when a template key, `repo` or `council` is not mentioned in backticks here.
 
 ## Path patterns
 
@@ -16,7 +16,7 @@ How many jobs can be running at once. `factory/bin/job` refuses to start a job p
 
 ### `max_rounds`
 
-How many build rounds a job gets. A new job's `round_limit` is set from it, and a job sent back from needs-human with feedback gets this many more rounds. Default: `3`. Read by `factory/bin/job`.
+How many build rounds a job gets. A new job's `round_limit` is set from it, and a person's feedback on a job in needs-human gives it this many more rounds. A round started by failed CI on the PR stays within the existing limit. Default: `3`. Read by `factory/bin/job`.
 
 ### `base_branch`
 
@@ -76,11 +76,11 @@ Extra reviewers for a surface that intake names. An object from surface (such as
 
 ### `protected_paths`
 
-Paths a branch must not touch. `factory/bin/gate` fails a branch that adds, modifies, deletes or renames a matching file. A list of [path patterns](#path-patterns). Default: the template's checks, config, `factory/bin/*`, `CLAUDE.md`, `AGENTS.md`, `.github/workflows/*` and `.claude/*`. Read by `factory/bin/gate`.
+Paths a branch must not touch. `factory/bin/gate` fails a branch that adds, modifies, deletes or renames a matching file. A list of [path patterns](#path-patterns). Default: `factory/checks.sh`, `factory/config.json`, `factory/bin/*`, `CLAUDE.md`, `AGENTS.md`, `.github/workflows/*` and `.claude/*`. Read by `factory/bin/gate`.
 
 ### `sensitive_paths`
 
-Paths whose change makes a job high risk, adds `sensitive_reviewers` and sends the job to a person whatever the reviews say. A list of [path patterns](#path-patterns). Default: package manifests, lockfiles and `*.env*`. Read by `factory/bin/job`.
+Paths whose change makes a job high risk, adds `sensitive_reviewers` and sends the job to a person whatever the reviews say. A list of [path patterns](#path-patterns). Default: `*package.json`, `*package-lock.json`, `*pnpm-lock.yaml`, `*yarn.lock` and `*.env*`. Read by `factory/bin/job`.
 
 ### `sensitive_reviewers`
 
@@ -96,7 +96,7 @@ The ports a job's servers use. An object with the keys `base` and `step`: job `n
 
 ### `dev_server`
 
-The command that starts the reviewers' dev server, as an argv list, run in the worktree with `{port}` filled in. It is started only when a `ux` or `ui` reviewer runs. It can be left out when a project has no pages. Default: a Next.js dev server. Read by `factory/bin/job`.
+The command that starts the reviewers' dev server, as an argv list, run in the worktree with `{port}` filled in. It is started only when a `ux` or `ui` reviewer runs. It can be left out when a project has no pages. Default: `["node", "node_modules/next/dist/bin/next", "dev", "-p", "{port}"]`, a Next.js dev server. Read by `factory/bin/job`.
 
 ### `prices_usd_per_mtok`
 
@@ -108,4 +108,4 @@ The source the project was onboarded from: a GitHub `owner/name` or a git URL or
 
 ### `council`
 
-The template has no such key. When it is present, `factory/bin/job` sends a job bound for needs-human through the `council` stage first. `factory/bin/run` currently passes that stage straight through to needs-human.
+The template has no such key. When it is present, `factory/bin/job` sends a job bound for needs-human through the `council` stage first, except a job a limit stopped (time, no output, turns or budget), which goes straight to needs-human. `factory/bin/run` currently passes that stage straight through to needs-human.
