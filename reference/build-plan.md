@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.6 (2026-11-25) — the one roadmap. It consolidates the v6.5 release sequence, the deployable-roadmap phases, the agent roster, the feature list, the provider spec and the two Gemini plans; their decisions are in [Roadmap decisions](#roadmap-decisions) and the old files are archived under `docs/archive/roadmap-proposals-2026-11-25/`. v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.6 (2026-11-25) — the one roadmap. F9 to F11 (model router, kanban job view, plugin distribution) are added from the model-router branch. It consolidates the v6.5 release sequence, the deployable-roadmap phases, the agent roster, the feature list, the provider spec and the two Gemini plans; their decisions are in [Roadmap decisions](#roadmap-decisions) and the old files are archived under `docs/archive/roadmap-proposals-2026-11-25/`. v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -322,6 +322,49 @@ Onboarded with `factory onboard`. Whatever the second project needs that the fir
 ### F8 — Other external intake
 
 Monitoring alerts and other sources, through the same tool-less summariser as F4.
+
+### F9 — Model router (grade-based model selection)
+
+A cheap classifier grades each card or job as easy, medium, or hard before it enters the build loop. The job runs on a model matched to its grade instead of always using the session model.
+
+| Grade | Router | Easy card | Medium card | Hard card |
+|---|---|---|---|---|
+| `factory run` | Haiku / gpt-mini | Sonnet | Opus / gpt-sol | session model / gpt-astra |
+| `factory run --low` | Haiku | Haiku | Sonnet | Opus |
+
+- The router is a one-shot call with a short prompt and a hard token cap. It returns only the grade and a one-line reason.
+- Cost saving: easy cards (the majority) run on a cheap model. Only hard cards use the expensive one.
+- The `--high` flag bypasses the router and runs everything on the top-tier model.
+- The `--low` flag runs everything on the cheap tier.
+- Router accuracy is tracked in the event log: was the grade right? If not, the card cost more or less than it should have.
+- Project config sets the model per grade per stage (build, review, security). Overrides are per-job flags.
+
+**Dependency.** The model-agnostic stage runner (E5) must exist first: each stage already starts a headless agent, and the grade just picks which model that agent uses. Estimate: 2 days after E5.
+
+### F10 — Kanban job view (dashboard)
+
+A kanban-style card view on the factory dashboard. Every job is a card that moves through columns (Intake → Spec → Build → Review → Gate → Merge). Each column shows the jobs at that stage, with a cost badge and a duration indicator.
+
+- The operator sees what is waiting, what is running, and what is done on one screen.
+- Cards in Ready / Needs Info columns show what needs human attention.
+- Clicking a card opens its event log detail.
+- The kanban is a view on top of the existing linear pipeline — no change to the engine itself.
+- Built on the same dashboard server as E6.4.
+- Estimate: 3 days after E6.4.
+
+### F11 — Plugin distribution
+
+Package the factory as a Claude Code plugin for one-line install:
+
+```
+/plugin marketplace add harry738/HyperSoftwareFactory
+/plugin install HyperSoftwareFactory
+```
+
+- The plugin ships the CLI and the dashboard setup.
+- After install, `factory onboard` sets up the project config.
+- Keeps the full engine as the container deployment; the plugin is just a thinner distribution path.
+- Estimate: 2 days after the engine track is stable.
 
 ### Carried over, not yet scheduled
 
