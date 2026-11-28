@@ -96,24 +96,29 @@ project is onboarded and again on every run, and an invalid block refuses the ru
 names the field.
 
 ```json
-"schedule": {"windows": [{"days": ["fri"], "start": "22:00", "stop": "05:00"}]},
-"tests":    {"profile": "full", "baseline": true, "flaky": "rerun-once-record-both"},
+"schedule": {"windows": [{"start_day": "fri", "start": "22:00", "end_day": "mon", "end": "05:00"}]},
+"tests":    {"profile": "full", "flaky": "rerun-once-record-both"},
 "pr":       {"draft": true, "one_job_one_pr": true, "max_open": 3},
 "merge":    {"mode": "supervised", "ceiling": "LOW", "daily_cap": 0}
 ```
 
 - **Schedule.** Windows are in the host's local system time, with no daylight-saving
   adjustment: a window keeps its clock time all year. The engine evaluates the windows
-  itself, so no scheduler carries its own time zone. A run starts only inside a window and
-  stops at its stop time. Jobs stay where they are, as the daily budget already does (E5.2).
-- **Tests.** The project names its `checks.sh` profile, and whether its baseline must pass
-  before a window starts. A project whose baseline is red does not start. The flaky-test
-  rule is R1.6.
+  itself, so no scheduler carries its own time zone. Each window names its start and end
+  as a day and a time. The end day is explicit, so a window can end on a later day, and an
+  end that is not after its start is a validation error. A run starts only inside a window.
+  It stops at the end of the window it is in, unless the next window starts at that same
+  moment, in which case it continues. Jobs stay where they are, as the daily budget already
+  does (E5.2).
+- **Tests.** The project names its `checks.sh` profile. A red baseline never starts a
+  window. There is no opt-out, and the schema has no baseline key. The flaky-test rule is R1.6.
 - **PRs.** The rule list is R1.7. `max_open` caps the open factory PRs. Every job opens one PR.
-- **Merge.** `mode` is `supervised` (the default, no unattended merge) or `full_auto`
-  (A1 and A2). It replaces `unattended_merge` from R1.2. Until a project is migrated,
-  `unattended_merge: true` means `full_auto` at the LOW ceiling. The sensitive-path rule and
-  the human-merge label stop a job in every mode. Only a person sets the mode.
+- **Merge.** `mode` is one of three values. `supervised` (the default) means a person
+  merges. `unattended` means the approver's APPROVE merges after the gate and CI, as R1.2
+  already allows. `unattended_merge: true` maps to this, and `unattended_merge` is removed
+  once every project is migrated. `full_auto` is the FullAuto mode of A1 and A2, and only a
+  person can select it. No existing setting selects it. The sensitive-path rule and the
+  human-merge label stop a job in every mode. Only a person sets the mode.
 - **Budgets.** Per-job time and spend (E2.1), the daily budget (E5.2) and any per-window
   cap. The lowest limit wins.
 - **Goals are inputs, not config.** The schedule says when work runs. What gets built comes
@@ -122,9 +127,10 @@ names the field.
 - **Precedence.** Always-stop rules, the ceiling and the sensitive-path rule outrank every
   profile. A profile can tighten them, never loosen them.
 
-**Acceptance.** A project with a weekend window and PR-only merging runs one window
-unattended, stops at its stop time, and leaves every job in a recorded stage. An invalid
-block refuses the run with its field named.
+**Acceptance.** A project with a window from Friday 22:00 to Monday 05:00, in `supervised`
+mode, runs unattended through the whole window and stops at its end. Every job is left in a
+recorded stage. A red baseline starts nothing. An invalid block refuses the run with its
+field named.
 
 **First consumer:** a private project's weekend window, Friday 22:00 to Monday 05:00 local, PRs only.
 
@@ -285,7 +291,7 @@ A mode the operator selects, in which no job waits for a person to verify it. Th
 | ID | Task | Status |
 |---|---|---|
 | A1 | Selecting the mode, at three levels. For one job: a `full-auto` label on the issue. For one run: `factory run <project> --full-auto`. As a project's default: `mode` in its `config.json`. The most specific choice wins, and a `supervised` label or `--supervised` turns it off the same way. The label counts only when the operator or a login in `trusted_logins` added it. `factory status`, the dashboard and each event-log row show the mode a job ran in | Open |
-| A2 | The `merge` block of the project run profile (R3.2), replacing `unattended_merge`: the default `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` only until explicitly changed by reviewed policy), and a daily cap on merges. A project starts at the LOW tier | Open |
+| A2 | The `merge` block of the project run profile (R3.2), replacing `unattended_merge`: the default `mode` (`supervised`, `unattended` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` only until explicitly changed by reviewed policy), and a daily cap on merges. A project starts at the LOW tier | Open |
 | A3 | A `policy.md` per project in the factory home: the operator's rules in plain language. The approver and the judge read it and name the rule they applied. It is not in the project repo, so a builder cannot change it | Open |
 | A4 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE uses only the remaining authorised round budget; otherwise decline or hand off. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
 | A5 | A watch after the merge. The engine waits for the base branch's CI, and for the deploy health check once F6 exists. A failure merges a revert, logs an escape and sends the job back for one round with the failure as feedback | Open |
