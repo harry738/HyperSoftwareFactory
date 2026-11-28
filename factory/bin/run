@@ -52,6 +52,10 @@ MAX_TURNS = CONFIG.get("stage_max_turns", 300)
 STAGE_BUDGET = CONFIG.get("stage_budget_usd", 5)
 RETRY_WAITS = CONFIG.get("retry_waits_seconds", [30, 120, 480])
 TRANSIENT = re.compile(r"rate.?limit|overloaded|\b(429|500|502|503|529)\b|ECONNRESET|ETIMEDOUT|temporarily unavailable", re.I)
+# The CLI cannot use this model now: its usage limit is spent, the login has no access, or the CLI is too old.
+UNAVAILABLE = re.compile(r"hit your .{0,40}limit|issue with the selected model|not have access to it|does not support this model", re.I)
+LADDER = CONFIG.get("model_ladder", [])  # best first: a stage falls to the next one down when its model is unavailable
+DOWN = set()  # models found unavailable during this run, so later stages skip them
 DAILY_BUDGET = CONFIG.get("daily_budget_usd")  # None: no daily cap
 DONE = {"merged", "rejected", "needs-info", "needs-human"}
 TOKENS = {"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
@@ -172,6 +176,13 @@ def watch(cmd, cwd, env):
     return how or ("ok" if p.returncode == 0 and not result.get("is_error") else "failed"), result, tail
 
 
+def models_to_try(model):
+    """The stage's model, then each one below it on the ladder, leaving out those already found unavailable
+    this run. Never a model above it. A model that is not on the ladder has no fallback."""
+    below = LADDER[LADDER.index(model) + 1:] if model in LADDER else []
+    return [m for m in [model, *below] if m not in DOWN] or [model]
+
+
 def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None):
     """One stage: a headless Claude Code run, inside its limits. True when it finished cleanly.
     `tools` narrows which tools exist, `allow` what they may do without asking; the rest is denied."""
@@ -192,33 +203,43 @@ def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None
     # The agent's instructions go in by file, and it gets exactly its own tools: nothing else is
     # available (--tools), and nothing needs a person to approve it (--allowedTools, dontAsk).
     # Only the project's own settings load, never the operator's personal plugins and hooks. A narrowed
-    # agent loads none at all, and no MCP servers: the branch under review could otherwise add allow
-    # rules, hooks or servers to its own review.
+    # agent loads none at all: the branch under review could otherwise add allow rules or hooks to its
+    # own review. No agent gets an MCP server: not the operator's own, and not the claude.ai connectors
+    # a signed-in CLI adds (mail, drives, docs), which also cost hundreds of thousands of tokens a turn.
     instructions = d / f"agent-{agent}.md"
     instructions.write_text(definition["prompt"], encoding="utf-8")
     exe = shutil.which(CLAUDE[0]) or CLAUDE[0]
-    base = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
-            "--append-system-prompt-file", instructions.as_posix(), "--model", definition["model"],
-            "--output-format", "stream-json", "--verbose",
-            *(["--setting-sources=", "--strict-mcp-config"] if allow else ["--setting-sources", "project"]),
-            "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
-            "--permission-mode", "dontAsk", "--tools", *(tools or definition["tools"]),
-            "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
     env = {k: v for k, v in os.environ.items() if k not in TOKENS}  # agents hold no GitHub token
-    for wait in [0, *RETRY_WAITS]:
-        time.sleep(wait)
-        start = time.monotonic()
-        how, result, tail = watch(base + (["--resume", resume] if resume else []),
-                                  worktree if worktree.exists() else REPO, env)
-        said = str(result.get("result") or " ".join(tail))[-300:].strip()
-        with USAGE_LOCK, (d / "usage.jsonl").open("a") as f:
-            f.write(json.dumps({"agent": agent, "model": definition["model"], "round": j["round"], "ok": how == "ok",
-                                "how": how, "cost_usd": result.get("total_cost_usd") or 0,
-                                "session": result.get("session_id"), "seconds": int(time.monotonic() - start), "day": today()}) + "\n")
-        if how != "failed" or "max_" in str(result.get("subtype")) or not TRANSIENT.search(said):
+    tried = models_to_try(model or definition["model"])
+    for m in tried:
+        definition["model"] = m
+        base = [exe, *CLAUDE[1:], "-p", f"{header} {message}".strip(),
+                "--append-system-prompt-file", instructions.as_posix(), "--model", m,
+                "--output-format", "stream-json", "--verbose",
+                *(["--setting-sources="] if allow else ["--setting-sources", "project"]), "--strict-mcp-config",
+                "--max-turns", str(MAX_TURNS), "--max-budget-usd", str(STAGE_BUDGET),
+                "--permission-mode", "dontAsk", "--tools", *(tools or definition["tools"]),
+                "--allowedTools", *(allow or definition["tools"]), "--add-dir", d.as_posix(), REPO.as_posix()]
+        for wait in [0, *RETRY_WAITS]:
+            time.sleep(wait)
+            start = time.monotonic()
+            how, result, tail = watch(base + (["--resume", resume] if resume else []),
+                                      worktree if worktree.exists() else REPO, env)
+            said = str(result.get("result") or " ".join(tail))[-300:].strip()
+            with USAGE_LOCK, (d / "usage.jsonl").open("a") as f:
+                f.write(json.dumps({"agent": agent, "model": m, "round": j["round"], "ok": how == "ok",
+                                    "how": how, "cost_usd": result.get("total_cost_usd") or 0,
+                                    "session": result.get("session_id"), "seconds": int(time.monotonic() - start), "day": today()}) + "\n")
+            if how != "failed" or "max_" in str(result.get("subtype")) or not TRANSIENT.search(said):
+                break
+            say(j, f"{agent} failed for a passing reason ({said}); trying again")
+            resume = result.get("session_id") or resume
+        # Only the CLI's own report of an unavailable model moves the stage down the ladder: not a match in
+        # other output, such as a crash trace. Any other failure stops it as before.
+        if how != "failed" or not UNAVAILABLE.search(str(result.get("result") or "")) or m == tried[-1]:
             break
-        say(j, f"{agent} failed for a passing reason ({said}); trying again")
-        resume = result.get("session_id") or resume
+        DOWN.add(m)
+        say(j, f"{agent}: {m} is not available ({said}); using {tried[tried.index(m) + 1]}")
     if how == "ok":
         return True
     if how == "timeout":
