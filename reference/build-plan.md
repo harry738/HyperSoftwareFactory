@@ -1,6 +1,6 @@
 # Software Factory — Build Plan
 
-**Version:** v6.6 (2026-11-25) — the one roadmap. F9 to F11 (model router, kanban job view, plugin distribution) are added from the model-router branch. It consolidates the v6.5 release sequence, the deployable-roadmap phases, the agent roster, the feature list, the provider spec and the two Gemini plans; their decisions are in [Roadmap decisions](#roadmap-decisions) and the old files are archived under `docs/archive/roadmap-proposals-2026-11-25/`. v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
+**Version:** v6.7 (2026-11-28) — adds R3.2, project run profiles: per-project schedule, test, PR and merge policy. v6.6 (2026-11-25) — the one roadmap. F9 to F11 (model router, kanban job view, plugin distribution) are added from the model-router branch. It consolidates the v6.5 release sequence, the deployable-roadmap phases, the agent roster, the feature list, the provider spec and the two Gemini plans; their decisions are in [Roadmap decisions](#roadmap-decisions) and the old files are archived under `docs/archive/roadmap-proposals-2026-11-25/`. v6.5 (2026-11-25) — six evidence-gated releases; assurance, isolation, scale and delivery engineering prioritised. v6.4 (2026-11-24) — adds four engine tasks from Binley's 24 Nov run (E2.5, E2.6, E3.5, E5.5). v6.3 (2026-11-24) adds FullAuto mode: an option the operator selects for a job, a run or a project, under which no job waits for a person, inside a policy the operator writes. v6.2 (2026-11-24) adds the lessons from Binley's second overnight run (23 Nov) to the engine track. v6.1 (2026-11-23) sets the operating model (a central factory, deployed as a container), puts the core engine first on a three-week timebox, and orders the features that follow. It was checked against thirteen comparable systems ([feature comparison](feature-comparison.md)). v5 closed Binley as the idea validation.
 
 This repo is public. Nothing here names a real project, a private repo or a local path; those live in the factory's private home (see below).
 
@@ -18,7 +18,7 @@ This sequence supersedes the previous feature order and three-week estimate. E1�
 |---|---|---|
 | R1 — Reliable factory | E1.6, CI failure classification, fail-closed merge, bounded checks, reproducible runtime, isolated workers (E2/E3/E6) | Ten supervised real jobs including seeded gate failure, CHANGES, escalation, runaway-stage kill and restart recovery; demonstrate credential/workspace isolation. |
 | R2 — Verified factory | E4, structured specifications, independent holdout tests (F5), security and architecture gates, commit-bound evidence | Every accepted criterion has evidence; independently measure reviewer effectiveness; no missing required CI or stale review accepted. |
-| R3 — Scalable factory | E5, durable scheduler, host-aware workers, conflict resolution, reserved budgets, second project (F7) | Three concurrent jobs across two projects without state corruption or budget-reservation violations; demonstrate worker-loss recovery. |
+| R3 — Scalable factory | E5, durable scheduler, project run profiles (R3.2), host-aware workers, conflict resolution, reserved budgets, second project (F7) | Three concurrent jobs across two projects without state corruption or budget-reservation violations; demonstrate worker-loss recovery. |
 | R4 — End-to-end delivery factory | Hermes (F2), Operations Centre (E6.4), existing CI/CD, staging health checks and rollback (F6) | One issue reaches healthy staging; rehearse rollback and record outcome. |
 | R5 — Learning factory | Project knowledge packs, Kaizen (F3/A8), controlled evaluations, shadow Dev council (F1) | Measurable improvement against baseline; independently recorded operator/council verdicts. |
 | R6 — Evidence-gated autonomous factory | FullAuto (A1–A7), LOW-risk unattended merge and controlled deploy, market watch (F4), external intake (F8) | Per-project evidence gates met, sustained LOW-tier performance, proven recovery and explicit operator policy. |
@@ -71,6 +71,7 @@ Taken in v6.6. Each can be reversed by a reviewed change to this file, not by a 
 | R2.3 | P0 | Commit-bound PR evidence (E4.3/E4.4) | Candidate SHA, spec/check/reviewer evidence, independent reviewer evaluation; nonblocking findings become nonqueued issues. |
 | R2.4 | P0 | Project standards (deployable Phase 1; Gemini 1.1, 1.3) | `AGENTS.md` and `CONTEXT.md` checklist with the readiness doctor; Tier 1–3 mapped to low, medium and high risk; a plan gate before any `src/` edit (the spec must exist first); ADR templates. The acceptance test is a spec before any source change on a sample of issues. |
 | R3.1 | P1 | Durable scheduler (E5/F7) | Atomic claims, worker leases/heartbeat, recovery, priority/dependencies, physical-host capacity, project limits, reserved budgets; start with two then three disjoint jobs. |
+| R3.2 | P1 | Project run profiles | Per project, in `config.json`: when work runs (`schedule`), how it is tested (`tests`), how PRs are opened (`pr`) and how they merge (`merge`). Each block is validated on onboarding and every run. Detail below the table. Depends on R3.1, R1.6 and R1.7. |
 | R4.1 | P1 | Release engineering (F6) | Existing CI/CD adapters, environment contracts, artifact identity, staging health checks, approved production boundary and rehearsed rollback. |
 | R4.2 | P1 | Operations Centre and Hermes (E6.4/F2) | Read-only queue, worker health, costs, quality, evidence and release state; schedules and notifications without handing Hermes GitHub credentials; authenticated audited actions later. |
 | R5.1 | P1 | Project knowledge engine (F3) | Versioned role-specific context packs: requirements, ADRs, API contracts, dependencies, security, tests and learnings. Markdown/YAML/code index first. |
@@ -86,6 +87,52 @@ Taken in v6.6. Each can be reversed by a reviewed change to this file, not by a 
 Two v6.4 conflicts require an explicit policy decision: council rewrites beyond the three-round cap, and FullAuto judgement of sensitive/always-stop paths. Until a separately reviewed policy change, the stricter CONTEXT.md rules govern: no extra autonomous round and no override of always-stop paths. No council or model can override mechanical controls. Decline or operator handoff is preferable to an unsafe merge.
 
 Source-level review: [aa8fe5e](https://github.com/harry738/HyperSoftwareFactory/commit/aa8fe5e0b83778bab4fead22e51b8619d4e43d6b). Not a live execution or penetration test; recheck the latest code before closing findings.
+
+## Project run profiles (R3.2)
+
+A project decides how and when the factory develops it. Four blocks in its `config.json`
+hold that decision. The engine reads them, never a model. Each block is validated when the
+project is onboarded and again on every run, and an invalid block refuses the run and
+names the field.
+
+```json
+"schedule": {"windows": [{"start_day": "fri", "start": "22:00", "end_day": "mon", "end": "05:00"}]},
+"tests":    {"profile": "full", "flaky": "rerun-once-record-both"},
+"pr":       {"draft": true, "one_job_one_pr": true, "max_open": 3},
+"merge":    {"mode": "supervised", "ceiling": "LOW", "daily_cap": 0}
+```
+
+- **Schedule.** Windows are in the host's local system time, with no daylight-saving
+  adjustment: a window keeps its clock time all year. The engine evaluates the windows
+  itself, so no scheduler carries its own time zone. Each window names its start and end
+  as a day and a time. The end day is explicit, so a window can end on a later day, and an
+  end that is not after its start is a validation error. A run starts only inside a window.
+  It stops at the end of the window it is in, unless the next window starts at that same
+  moment, in which case it continues. Jobs stay where they are, as the daily budget already
+  does (E5.2).
+- **Tests.** The project names its `checks.sh` profile. A red baseline never starts a
+  window. There is no opt-out, and the schema has no baseline key. The flaky-test rule is R1.6.
+- **PRs.** The rule list is R1.7. `max_open` caps the open factory PRs. Every job opens one PR.
+- **Merge.** `mode` is one of three values. `supervised` (the default) means a person
+  merges. `unattended` means the approver's APPROVE merges after the gate and CI, as R1.2
+  already allows. `unattended_merge: true` maps to this, and `unattended_merge` is removed
+  once every project is migrated. `full_auto` is the FullAuto mode of A1 and A2, and only a
+  person can select it. No existing setting selects it. The sensitive-path rule and the
+  human-merge label stop a job in every mode. Only a person sets the mode.
+- **Budgets.** Per-job time and spend (E2.1), the daily budget (E5.2) and any per-window
+  cap. The lowest limit wins.
+- **Goals are inputs, not config.** The schedule says when work runs. What gets built comes
+  from the labelled issues, so one project can run a weekend window and a weekday window
+  without editing its schedule.
+- **Precedence.** Always-stop rules, the ceiling and the sensitive-path rule outrank every
+  profile. A profile can tighten them, never loosen them.
+
+**Acceptance.** A project with a window from Friday 22:00 to Monday 05:00, in `supervised`
+mode, runs unattended through the whole window and stops at its end. Every job is left in a
+recorded stage. A red baseline starts nothing. An invalid block refuses the run with its
+field named.
+
+**First consumer:** a private project's weekend window, Friday 22:00 to Monday 05:00 local, PRs only.
 
 ## Operating model
 
@@ -244,7 +291,7 @@ A mode the operator selects, in which no job waits for a person to verify it. Th
 | ID | Task | Status |
 |---|---|---|
 | A1 | Selecting the mode, at three levels. For one job: a `full-auto` label on the issue. For one run: `factory run <project> --full-auto`. As a project's default: `mode` in its `config.json`. The most specific choice wins, and a `supervised` label or `--supervised` turns it off the same way. The label counts only when the operator or a login in `trusted_logins` added it. `factory status`, the dashboard and each event-log row show the mode a job ran in | Open |
-| A2 | A `policy` block in the project's `config.json`, replacing `unattended_merge`: the default `mode` (`supervised` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` only until explicitly changed by reviewed policy), and a daily cap on merges. A project starts at the LOW tier | Open |
+| A2 | The `merge` block of the project run profile (R3.2), replacing `unattended_merge`: the default `mode` (`supervised`, `unattended` or `full_auto`), the highest risk tier that may merge without a person (`ceiling`), what a sensitive path does (`stop` only until explicitly changed by reviewed policy), and a daily cap on merges. A project starts at the LOW tier | Open |
 | A3 | A `policy.md` per project in the factory home: the operator's rules in plain language. The approver and the judge read it and name the rule they applied. It is not in the project repo, so a builder cannot change it | Open |
 | A4 | A second look in place of a person. Where a job would go to the operator (the approver escalates, a review is blocked, the round limit or a cap is hit), the council slot (E3.3) runs a judge that returns MERGE, REWRITE or DECLINE. REWRITE uses only the remaining authorised round budget; otherwise decline or hand off. DECLINE closes the PR and writes the reason on the issue; nothing waits. One seat to start with, on a different model from the builder. The Dev council (F1) takes the seat when it is built | Open |
 | A5 | A watch after the merge. The engine waits for the base branch's CI, and for the deploy health check once F6 exists. A failure merges a revert, logs an escape and sends the job back for one round with the failure as feedback | Open |
