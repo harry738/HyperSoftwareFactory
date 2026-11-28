@@ -67,7 +67,8 @@ def load_config():
         config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
     else:
         config = {}
-    config.setdefault("projects", {})
+    if config.get("projects") is None:
+        config["projects"] = {}
     return config
 
 def save_config(config):
