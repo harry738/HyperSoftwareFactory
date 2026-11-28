@@ -726,7 +726,7 @@ def advance(job, stage):
 
     elif old == "approve":
         line = first_line(d / "decision.md")
-        unattended = CONFIG.get("unattended_merge", True)  # false: every approved job waits for a person to merge
+        unattended = CONFIG.get("unattended_merge") is True  # fails closed: only an explicit true lets a job merge without a person
         stops = job.get("always_stop") or []
         if stage == "merging":
             require(not stops, f"an always-stop rule applies ({'; '.join(stops)}): go to needs-human")

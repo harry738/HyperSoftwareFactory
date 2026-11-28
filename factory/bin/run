@@ -370,7 +370,7 @@ def step(j):
             return advance(j, "needs-human")
         if not run_agent(j, "approver", f"PR: #{j['pr']}. Final round: {j['round']}."):
             return False
-        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge", True) and not j.get("held"):
+        if first_line(d / "decision.md") == "APPROVE" and CONFIG.get("unattended_merge") is True and not j.get("held"):
             stage = "merging"
         else:  # ESCALATE, or approved with unattended merge off: a person merges
             return advance(j, "needs-human")
