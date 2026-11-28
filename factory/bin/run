@@ -235,8 +235,10 @@ def run_agent(j, agent, message, model=None, resume=None, allow=None, tools=None
             say(j, f"{agent} failed for a passing reason ({said}); trying again")
             resume = result.get("session_id") or resume
         # Only the CLI's own report of an unavailable model moves the stage down the ladder: not a match in
-        # other output, such as a crash trace. Any other failure stops it as before.
-        if how != "failed" or not UNAVAILABLE.search(str(result.get("result") or "")) or m == tried[-1]:
+        # other output, such as a crash trace, and not a rate limit, which was retried above. Any other
+        # failure stops it as before.
+        reported = str(result.get("result") or "")
+        if how != "failed" or not UNAVAILABLE.search(reported) or TRANSIENT.search(reported) or m == tried[-1]:
             break
         DOWN.add(m)
         say(j, f"{agent}: {m} is not available ({said}); using {tried[tried.index(m) + 1]}")
