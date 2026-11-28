@@ -106,6 +106,9 @@ print(json.dumps({"type": "system", "subtype": "init"}), flush=True)
 if os.environ.get("FAKE_FAIL") == agent:
     print(json.dumps({"type": "result", "is_error": True, "result": "boom"}))
     sys.exit(1)
+if os.environ.get("FAKE_UNAVAILABLE") and a[a.index("--model") + 1] == os.environ["FAKE_UNAVAILABLE"]:
+    print(json.dumps({"type": "result", "is_error": True, "result": "You've hit your Fable limit, resets 7am"}))
+    sys.exit(1)
 if os.environ.get("FAKE_STALL") == agent:
     time.sleep(120)
 if os.environ.get("FAKE_FLAKY") == agent and not (folder / "flaky-done").exists():
@@ -155,7 +158,7 @@ JOBS = HOME / "work" / "demo" / "jobs"
 
 
 def env(**extra):
-    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "", "FAKE_CHECKS": "", "FAKE_MERGEABLE": "",
+    return {**os.environ, "FACTORY_HOME": str(HOME), "GH_TOKEN": "secret", "FAKE_FAIL": "", "FAKE_UNAVAILABLE": "", "FAKE_STALL": "", "FAKE_FLAKY": "", "FAKE_TOUCH": "", "FAKE_SILENT": "", "FAKE_EDIT": "", "FAKE_SPEC": "", "FAKE_CHECKS": "", "FAKE_MERGEABLE": "",
             "FACTORY_GH": f"{PY} {(TMP / 'fake_gh.py').as_posix()}", "FACTORY_CLAUDE": f"{PY} {(TMP / 'fake_claude.py').as_posix()}", **extra}
 
 
@@ -221,7 +224,7 @@ def set_up():
     (TMP / "fake_gh.py").write_text(FAKE_GH)
     (TMP / "fake_claude.py").write_text(FAKE_CLAUDE)
     issues = [{"number": n, "title": f"Add feature {n}", "body": "Please add feature.txt", "labels": [],
-               "state": "OPEN", "comments": []} for n in range(1, 18)]
+               "state": "OPEN", "comments": []} for n in range(1, 19)]
     (TMP / "gh-state.json").write_text(json.dumps({"issues": issues, "prs": []}))
     label(1)  # the other issues join the queue one test at a time
     git("init", "-q", "--bare", "-b", "main", str(TMP / "origin.git"))
@@ -292,6 +295,7 @@ def test_reviewers_get_read_only_tools():
     assert "+++ b/feature.txt" in (folder(1) / "round-1" / "changes.diff").read_text()
     assert "--setting-sources=" in args and "--strict-mcp-config" in args, args  # the branch cannot widen its review
     assert "--setting-sources=" not in calls()[2]["args"], "the builder still loads the project's settings"
+    assert all("--strict-mcp-config" in c["args"] for c in calls()), "every stage must run without MCP servers"
     assert builder == ["Read", "Grep", "Glob", "Bash", "Edit", "Write"], builder  # other stages keep their own tools
 
 
@@ -559,6 +563,18 @@ def test_an_unattended_merge_fails_closed_unless_set_to_true():
         config(unattended_merge=False)
     assert res.returncode == 0, res.stdout + res.stderr
     assert job_for_issue(17)["stage"] == "needs-human", job_for_issue(17)
+
+
+def test_an_unavailable_model_falls_to_the_next_one_down_the_ladder():
+    label(18)
+    res = factory("run", "demo", FAKE_UNAVAILABLE="fable")
+    assert res.returncode == 0 and "fable is not available" in res.stdout, res.stdout + res.stderr
+    assert job_for_issue(18)["stage"] == "needs-human", job_for_issue(18)
+    rows = [json.loads(line) for line in (JOBS / job_for_issue(18)["id"] / "usage.jsonl").read_text().splitlines()]
+    tried = [(r["agent"], r["model"], r["how"]) for r in rows]
+    assert tried[:2] == [("intake", "fable", "failed"), ("intake", "opus", "ok")], tried  # no wait: not a passing failure
+    assert ("spec-writer", "opus", "ok") in tried and ("spec-writer", "fable", "failed") not in tried, tried  # skipped
+    assert ("builder", "opus", "ok") in tried, tried  # a model below fable is used as asked
 
 
 def test_status_lists_every_job():

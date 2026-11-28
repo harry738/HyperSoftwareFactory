@@ -15,6 +15,7 @@
     120,
     480
   ],
+  "model_ladder": ["fable", "opus", "sonnet", "haiku"],
   "trusted_logins": [],
   "labels": {
     "queue": "factory",
